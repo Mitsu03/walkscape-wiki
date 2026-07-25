@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Turn the crawled .firecrawl/*.md pages into a clean structured JSON
-for the WalkScape Companion web app."""
+for the WalkScape Companion web app.
+
+Output: data/wiki_data.json
+  pages[slug] = {title, section, sub, tags, html, text, icon, related}
+  sections[section] = [slug, ...]
+  subs[section] = [subtype, ...]   (ordered, only non-empty ones)
+"""
 import re, glob, os, json, html, urllib.parse, hashlib
 import markdown
 
@@ -25,6 +31,10 @@ def slug_to_title(slug):
     if slug == "Home":
         return "Welcome to WalkScape"
     t = urllib.parse.unquote(slug).replace("_", " ")
+    if t.startswith("Guide:"):
+        t = t[6:]
+    if t.startswith("Walkscape Walkthrough:"):
+        t = t[22:]
     return t
 
 # --- cleaning ----------------------------------------------------------
@@ -60,9 +70,10 @@ def cap_html(h, url):
     else:
         cut = h.rfind("</p>", 0, HTML_CAP)
         h = h[:(cut + 4) if cut > 0 else HTML_CAP]
-    note = ('<blockquote><strong>This is a long reference entry.</strong> '
-            'The full list continues on the <a href="%s" target="_blank" '
-            'rel="noopener">official WalkScape wiki</a> ↗</blockquote>' % url)
+    note = ('<blockquote class="cont"><strong>This reference continues on the '
+            'official WalkScape wiki.</strong> The remaining rows were too long '
+            'to bundle offline. <a href="%s" target="_blank" rel="noopener">'
+            'Read the full page</a></blockquote>' % url)
     return h + tail + note
 
 def clean_markdown(text, title):
@@ -115,7 +126,7 @@ def clean_markdown(text, title):
     # collapse >2 blank lines
     md = re.sub(r"\n{3,}", "\n\n", md).strip()
     # strip collapse arrows / stray unicode markers in headings
-    md = md.replace("▾", "").replace("▸", "")
+    md = md.replace("\u25be", "").replace("\u25b8", "")
     return md
 
 # --- link + image rewriting on rendered HTML --------------------------
@@ -157,8 +168,9 @@ def rewrite_html(html_str, have_slugs):
             if key in have_slugs:
                 return 'href="#/' + urllib.parse.quote(page) + '"'
             # namespaced/meta or missing -> external
-            return 'href="https://wiki.walkscape.app/wiki/' + page + '" target="_blank" rel="noopener"'
-        # index.php / other tesla-app links -> external new tab
+            return ('href="https://wiki.walkscape.app/wiki/' + page +
+                    '" target="_blank" rel="noopener"')
+        # index.php / other links -> external new tab
         if href.startswith("http"):
             return 'href="' + href + '" target="_blank" rel="noopener"'
         return m.group(0)
@@ -169,46 +181,250 @@ def rewrite_html(html_str, have_slugs):
         "Special:MyLanguage:", "")
     return html_str
 
-# --- categorization ----------------------------------------------------
-SKILL_PAGES = set()  # filled from Category:Skills membership
+# ======================================================================
+#  CLASSIFICATION
+# ======================================================================
+# Eight top-level sections. Everything lands in exactly one of them; the
+# extra facets a page belongs to become tags instead of duplicate entries.
+START, SKILLS, ACTS, ITEMS, LOCS, SYS, GUIDES, GLOSS = (
+    "Start Here", "Skills", "Activities", "Items & Equipment",
+    "Locations", "Game Systems", "Guides", "Glossary")
 
-def primary_section(slug, title, cats):
-    lc = [c.lower() for c in cats]
+# --- curated overrides, audited against data/master_urls.txt ----------
+# Onboarding + wiki meta.
+START_PAGES = {
+    "Home", "Tutorial", "FAQs", "Troubleshooting", "Tips", "Shortcuts",
+    "Versions", "Walkscape_Walkthrough:About",
+    "Walkscape_Walkthrough:General_disclaimer",
+    "Walkscape_Walkthrough:Privacy_policy",
+}
+ABOUT_PAGES = {"Walkscape_Walkthrough:About",
+               "Walkscape_Walkthrough:General_disclaimer",
+               "Walkscape_Walkthrough:Privacy_policy", "Versions"}
+
+# The 14 trainable skills, split the way players think about them.
+SKILL_GROUPS = {
+    "Gathering": {"Fishing", "Foraging", "Hunting", "Mining", "Woodcutting",
+                  "Farming"},
+    "Artisan": {"Carpentry", "Cooking", "Crafting", "Smithing", "Tailoring",
+                "Trinketry", "Forge"},
+    "Support": {"Agility", "Traveling"},
+}
+SKILL_PAGES = set().union(*SKILL_GROUPS.values())
+
+# Attribute triples: <Name>, <Name>_(Mechanics, <Name>_Items all describe one
+# character attribute. The bare page is the system, the _Items page is an index.
+ATTRIBUTES = {
+    "Work_Efficiency", "Steps_Required", "Item_Finding", "Double_Action",
+    "Double_Rewards", "Quality_Outcome", "Fine_Material_Finding",
+    "Chest_Finding", "Find_Gems", "Find_Bird_Nests", "Find_Collectibles",
+    "Inventory_Space", "Skill_Level", "Bonus_Experience",
+    "No_Materials_Consumed", "Crafting_Outcome",
+}
+# Core rules and progression pages.
+SYS_PAGES = {
+    "Attributes", "Character_Level", "Skill_Experience", "Skill_Level",
+    "Skill_Training", "Core_Mechanics", "Inventory", "Toolbelt", "Abilities",
+    "Achievements", "Pets", "Pet_Eggs", "Chests", "Services", "Recipes",
+    "Upgraded_Equipment", "Perfect_Items", "Overencumbered", "Overprepared",
+    "Saved_steps", "Fine_Material", "Activity", "Equipment", "Arenum",
+    "Map_of_Arenum", "Skills", "Activities", "Items", "Locations",
+    "Movement_Activities", "Spelunking", "Traveling",
+}
+SYS_GROUPS = {
+    "Attributes": {"Attributes"} | ATTRIBUTES,
+    "Progression": {"Character_Level", "Skill_Experience", "Skill_Level",
+                    "Skill_Training", "Abilities", "Achievements"},
+    "Inventory & Gear": {"Inventory", "Toolbelt", "Equipment",
+                         "Upgraded_Equipment", "Perfect_Items",
+                         "Overencumbered", "Overprepared"},
+    "Rewards": {"Chests", "Pets", "Pet_Eggs", "Recipes", "Services",
+                "Fine_Material"},
+}
+# Section index pages ("Skills", "Items"...) - kept, but flagged as indexes so
+# the UI can push them below real content.
+INDEX_PAGES = {"Skills", "Activities", "Items", "Locations", "Equipment",
+               "Materials", "Consumables", "Gear", "Tools", "Keywords",
+               "Collectibles", "Cosmetics", "Gems", "Crafted_Items",
+               "Crafted_items", "Food", "Trinkets", "Rings", "Weapons",
+               "Logs", "Ores", "Bars", "Lore_Items", "Loot_Items",
+               "Fishing_Chests", "Bird_Nests", "Berries", "Recipes",
+               "Map_of_Arenum", "Arenum"}
+
+GUIDE_PAGES = {"Skill_Training", "Money_Making", "Tips_and_Tricks"}
+
+# Item subtype detection, checked in order. (slug-suffix hints, cat keywords)
+ITEM_SUBS = [
+    ("Index",        (), ()),  # handled separately
+    ("Tools",        ("pickaxe", "hatchet", "hammer", "sickle", "pan", "rod",
+                      "shovel", "bellows", "cartpack", "fishing_line",
+                      "toolbelt", "kicksled", "dynamite", "guidebook"),
+                     ("tool",)),
+    ("Food",         ("pie", "sandwich", "soup", "weave", "rolls", "beer",
+                      "cooked_", "salmon", "shrimp", "carp", "cucumber",
+                      "tomato", "honeycomb", "berries", "jellyfish", "squid"),
+                     ("food", "cooked", "edible")),
+    ("Consumables",  (), ("consumable", "potion", "drink")),
+    ("Cosmetics",    ("sunglasses", "sneakers", "cape", "cool_", "teddy"),
+                     ("cosmetic",)),
+    ("Collectibles", ("memosphere", "tusk", "tear", "clam_shell", "feather",
+                      "shell", "butterfly", "bauble", "horn_of"),
+                     ("collectible", "lore item", "lore")),
+    ("Gear",         ("ring", "trinket", "shield", "sword", "hat", "jacket",
+                      "handwraps", "crown", "cape", "boots", "armour",
+                      "armor", "helm", "gloves", "belt", "amulet"),
+                     ("gear", "equipment", "weapon", "armour", "armor",
+                      "ring", "trinket", "jewellery", "jewelry", "clothing")),
+    ("Materials",    ("_ore", "_bar", "_log", "logs", "_scrap", "scraps",
+                      "stone", "root", "topaz", "hide", "wood", "gem"),
+                     ("material", "resource", "ore", "bar", "log", "gem",
+                      "fish", "raw")),
+]
+
+LOC_SUBS = [
+    ("Regions", ("region", "kingdom", "empire", "duchy", "continent")),
+    ("Cities",  ("city", "cities", "town", "settlement", "port", "village")),
+    ("Areas",   ("area", "areas", "zone", "wilderness", "forest", "mountain")),
+]
+
+ACT_SUBS = [
+    ("Gathering", ("woodcutting", "mining", "fishing", "foraging", "hunting",
+                   "farming")),
+    ("Crafting",  ("crafting", "smithing", "cooking", "carpentry", "tailoring",
+                   "trinketry")),
+    ("Movement",  ("agility", "traveling", "movement")),
+]
+
+
+def _hit(needles, haystack):
+    return any(n in haystack for n in needles)
+
+
+def classify(slug, title, cats):
+    """Return (section, subtype, tags). One primary home per page; anything
+    else it also belongs to becomes a secondary tag."""
+    lc = " | ".join(c.lower() for c in cats)
+    sl = slug.lower()
+    tags = []
+
     def has(*keys):
-        return any(any(k in c for c in lc) for k in keys)
+        return _hit(keys, lc)
 
-    if slug == "Home":
-        return "Basics & Reference"
-    # explicit index/basics pages
-    basics = {"Skills", "Activities", "Items", "Equipment", "Keywords",
-              "Attributes", "Character_Level", "Inventory", "Materials",
-              "Consumables", "Gear", "Services", "Locations", "Arenum",
-              "Glossary", "Abilities", "Achievements", "Chests"}
-    if slug in basics:
-        return "Basics & Reference"
-    if slug.startswith("Guide:") or slug.startswith("Gear:"):
-        return "Guides"
-    # keyword pages are named "<X>_Keyword"
-    if slug.endswith("_Keyword") or title.endswith("Keyword"):
-        return "Keywords"
-    # item-list / collection pages
-    if slug.endswith("_Items") or slug in ("Gems", "Crafted_Items", "Food",
-            "Tools", "Trinkets", "Rings", "Weapons", "Logs", "Ores", "Bars",
-            "Lore_Items"):
-        return "Items"
-    if "skills" in lc and slug != "Skills":
-        return "Skills"
-    if "activities" in lc or has("activit"):
-        return "Activities"
-    if has("location", "cities", "areas", "region"):
-        return "Locations"
-    if has("keyword"):
-        return "Keywords"
+    # -- Start Here ----------------------------------------------------
+    if slug in START_PAGES:
+        sub = "About the wiki" if slug in ABOUT_PAGES else "Getting started"
+        return START, sub, tags
+
+    # -- Guides --------------------------------------------------------
+    if slug.startswith("Guide:") or slug.startswith("Gear:") \
+            or slug in GUIDE_PAGES:
+        return GUIDES, "Walkthroughs", tags
+
+    # -- Glossary: keyword pages describe a term, not an item ----------
+    if slug.endswith("_Keyword") or title.endswith("Keyword") \
+            or slug in ("Keywords", "Glossary"):
+        tags.append("Keyword")
+        return GLOSS, "Item keywords" if slug.endswith("_Keyword") else \
+            "Reference", tags
+
+    # -- Attribute triples --------------------------------------------
+    base = slug[:-6] if slug.endswith("_Items") else slug
+    base = base[:-len("_Attribute")] if base.endswith("_Attribute") else base
+    if slug.endswith("_Items") and (base in ATTRIBUTES or
+                                    base in SKILL_PAGES or base == "Global"):
+        # e.g. "Mining_Attribute_Items", "Work_Efficiency_Items" - these are
+        # lists of gear, so they live with the gear but are marked as indexes.
+        tags.append(base.replace("_", " "))
+        return ITEMS, "Index", tags
+    if slug in ATTRIBUTES or slug.replace("_(Mechanics", "") in ATTRIBUTES:
+        return SYS, "Attributes", tags
+
+    # -- Skills --------------------------------------------------------
+    if slug in SKILL_PAGES:
+        for group, members in SKILL_GROUPS.items():
+            if slug in members:
+                return SKILLS, group, tags
+    if has("skills") and slug not in INDEX_PAGES:
+        return SKILLS, "Support", tags
+
+    # -- Game systems --------------------------------------------------
+    if slug in SYS_PAGES:
+        for group, members in SYS_GROUPS.items():
+            if slug in members:
+                if slug in INDEX_PAGES:
+                    tags.append("Index")
+                return SYS, group, tags
+        if slug in INDEX_PAGES:
+            tags.append("Index")
+        return SYS, "Core rules", tags
+
+    # -- Activities ----------------------------------------------------
+    if has("activit") or sl.startswith(("cut_", "mine_", "find_", "venture_",
+                                        "hut_", "catch_")):
+        for group, keys in ACT_SUBS:
+            if _hit(keys, lc) or _hit(keys, sl):
+                return ACTS, group, tags
+        return ACTS, "Other", tags
+
+    # -- Locations -----------------------------------------------------
+    if has("location", "cities", "areas", "region", "arenum", "place"):
+        for group, keys in LOC_SUBS:
+            if _hit(keys, lc):
+                return LOCS, group, tags
+        return LOCS, "Areas", tags
+
+    # -- Items ---------------------------------------------------------
+    if slug in INDEX_PAGES or slug.endswith("_Items"):
+        tags.append("Index")
+        return ITEMS, "Index", tags
     if has("item", "material", "consumable", "equipment", "food", "tool",
            "trinket", "ring", "gear", "weapon", "armor", "armour",
-           "resource", "log", "ore", "fish", "bar", "gem"):
-        return "Items"
-    return "Basics & Reference"
+           "resource", "log", "ore", "fish", "bar", "gem", "cosmetic",
+           "collectible", "chest"):
+        for name, slug_keys, cat_keys in ITEM_SUBS[1:]:
+            if _hit(cat_keys, lc) or _hit(slug_keys, sl):
+                return ITEMS, name, tags
+        return ITEMS, "Materials", tags
+
+    # -- last resort: shape of the slug, not a catch-all bucket --------
+    for name, slug_keys, cat_keys in ITEM_SUBS[1:]:
+        if _hit(slug_keys, sl):
+            return ITEMS, name, tags
+    if has("mechanic", "gameplay", "system"):
+        return SYS, "Core rules", tags
+    return GLOSS, "Reference", tags
+
+
+# tags the wiki uses for its own bookkeeping - never show these
+TAG_BLOCK = re.compile(
+    r"^(pages |articles |all |stub|candidates|wiki |maintenance|"
+    r"needs |translat|disambig)", re.I)
+
+def clean_tags(cats, extra):
+    out = list(extra)
+    for c in cats:
+        if TAG_BLOCK.match(c):
+            continue
+        if c.lower() in ("categories", "browse", "main page"):
+            continue
+        if c not in out:
+            out.append(c)
+    return out[:6]
+
+
+SECTION_ORDER = [START, SKILLS, ACTS, ITEMS, LOCS, SYS, GUIDES, GLOSS]
+SUB_ORDER = {
+    START: ["Getting started", "About the wiki"],
+    SKILLS: ["Gathering", "Artisan", "Support"],
+    ACTS: ["Gathering", "Crafting", "Movement", "Other"],
+    ITEMS: ["Tools", "Gear", "Materials", "Consumables", "Food",
+            "Collectibles", "Cosmetics", "Index"],
+    LOCS: ["Regions", "Cities", "Areas"],
+    SYS: ["Attributes", "Progression", "Inventory & Gear", "Rewards",
+          "Core rules"],
+    GUIDES: ["Walkthroughs"],
+    GLOSS: ["Reference", "Item keywords"],
+}
 
 # --- main --------------------------------------------------------------
 def main():
@@ -221,12 +437,14 @@ def main():
         raw[slug] = text
     # home page (title has ':' -> can't be a Windows filename, loaded apart)
     if os.path.exists("data/home.md"):
-        raw["Home"] = open("data/home.md", encoding="utf-8", errors="ignore").read()
+        raw["Home"] = open("data/home.md", encoding="utf-8",
+                           errors="ignore").read()
 
     have = set(urllib.parse.unquote(s) for s in raw.keys())
 
     LANG = re.compile(r"[-./](de|fr|es|it|pt|pl|nl|ru|zh|ja|ko|tr|cs|fi|sv|da"
-                      r"|no|uk|hu|ro|el|he|ar|th|id|vi|hr|sk|sl|et|lt|lv)$", re.I)
+                      r"|no|uk|hu|ro|el|he|ar|th|id|vi|hr|sk|sl|et|lt|lv)$",
+                      re.I)
     pages = {}
     for slug, text in raw.items():
         title = slug_to_title(slug)
@@ -242,7 +460,8 @@ def main():
         if len(body_md) < 15:
             continue  # empty/redirect stub
         if slug == "Home":
-            source_url = "https://wiki.walkscape.app/wiki/WalkScape:_Grind_by_walking!"
+            source_url = ("https://wiki.walkscape.app/wiki/"
+                          "WalkScape:_Grind_by_walking!")
         else:
             source_url = "https://wiki.walkscape.app/wiki/" + slug
         md.reset()
@@ -259,37 +478,68 @@ def main():
         body_html = re.sub(r">\s+<", "><", body_html)
         if slug != "Home":
             body_html = cap_html(body_html, source_url)
-        section = primary_section(slug, title, cats)
-        # plain text for search
+
+        section, sub, extra = classify(slug, title, cats)
+        # first referenced image doubles as the entry's icon in lists/cards
+        first_img = re.search(r'data-i="([^"]+)"', body_html)
+        # plain text for search + excerpt
         plain = re.sub(r"<[^>]+>", " ", body_html)
         plain = html.unescape(re.sub(r"\s+", " ", plain)).strip()
         pages[slug] = {
             "title": title,
             "section": section,
-            "categories": cats,
+            "sub": sub,
+            "tags": clean_tags(cats, extra),
             "html": body_html,
-            "text": plain[:240],
+            "text": plain[:280],
+            "icon": first_img.group(1) if first_img else "",
+            "url": source_url,
         }
 
+    # --- related entries: pages this page links to, that link back or share
+    #     a section. Cheap, deterministic, no NLP.
+    link_re = re.compile(r'href="#/([^"]+)"')
+    outgoing = {}
+    for slug, p in pages.items():
+        seen = []
+        for m in link_re.findall(p["html"]):
+            t = urllib.parse.unquote(m)
+            if t != slug and t in pages and t not in seen:
+                seen.append(t)
+        outgoing[slug] = seen
+    for slug, p in pages.items():
+        same = [s for s in outgoing[slug] if pages[s]["section"] == p["section"]]
+        other = [s for s in outgoing[slug] if s not in same]
+        p["related"] = (same + other)[:6]
+
     # build category index
-    sections = {}
+    sections, subs = {}, {}
     for slug, p in pages.items():
         sections.setdefault(p["section"], []).append(slug)
+        subs.setdefault(p["section"], set()).add(p["sub"])
     for s in sections:
         sections[s].sort(key=lambda x: pages[x]["title"].lower())
+    subs = {s: [x for x in SUB_ORDER.get(s, []) if x in subs[s]] +
+               sorted(v for v in subs[s] if v not in SUB_ORDER.get(s, []))
+            for s in subs}
 
-    data = {"pages": pages, "sections": sections,
-            "count": len(pages),
-            "home": "Home"}
+    order = [s for s in SECTION_ORDER if s in sections] + \
+            [s for s in sections if s not in SECTION_ORDER]
+
+    data = {"pages": pages, "sections": sections, "subs": subs,
+            "order": order, "count": len(pages), "home": "Home"}
     os.makedirs("data", exist_ok=True)
     with open("data/wiki_data.json", "w", encoding="utf-8") as out:
         json.dump(data, out, ensure_ascii=False)
     with open("data/img_map.json", "w", encoding="utf-8") as out:
         json.dump(IMG_MAP, out)
     print(f"Pages: {len(pages)} | images referenced: {len(IMG_MAP)}")
-    for s in sorted(sections, key=lambda x: -len(sections[x])):
-        print(f"  {s}: {len(sections[s])}")
-    return
+    for s in order:
+        line = ", ".join("%s %d" % (k, sum(1 for x in sections[s]
+                                           if pages[x]["sub"] == k))
+                         for k in subs[s])
+        print(f"  {s}: {len(sections[s])}  ({line})")
+
 
 if __name__ == "__main__":
     main()
