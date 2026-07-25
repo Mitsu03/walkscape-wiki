@@ -1,6 +1,9 @@
 # Firecrawl cache
 .firecrawl/
 
+# Downloaded raw image cache (regenerable via build_images.py)
+data/img_cache/
+
 # OS
 Thumbs.db
 .DS_Store

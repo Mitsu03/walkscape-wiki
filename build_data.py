@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 """Turn the crawled .firecrawl/*.md pages into a clean structured JSON
 for the WalkScape Companion web app."""
-import re, glob, os, json, html, urllib.parse
+import re, glob, os, json, html, urllib.parse, hashlib
 import markdown
+
+# url -> short id, collected while cleaning pages
+IMG_MAP = {}
+def img_id(url):
+    h = hashlib.sha1(url.encode()).hexdigest()[:12]
+    IMG_MAP[h] = url
+    return h
 
 CACHE = ".firecrawl"
 PREFIX = "wiki.walkscape.app-wiki-"
@@ -105,9 +112,24 @@ def clean_markdown(text, title):
     return md
 
 # --- link + image rewriting on rendered HTML --------------------------
+GIF_RE = re.compile(r"\.gif($|\?)", re.I)
+def _img_repl(m):
+    tag = m.group(0)
+    src = re.search(r'src="([^"]+)"', tag)
+    if not src:
+        return ""
+    url = html.unescape(src.group(1))
+    if not url.startswith("https://wiki.walkscape.app/images/"):
+        return ""
+    if GIF_RE.search(url):
+        return ""  # animated gifs are too heavy to inline
+    alt = re.search(r'alt="([^"]*)"', tag)
+    alt = alt.group(1) if alt else ""
+    return '<img data-i="%s" alt="%s" loading="lazy">' % (img_id(url), alt)
+
 def rewrite_html(html_str, have_slugs):
-    # remove images entirely (external, blocked by Artifact CSP)
-    html_str = re.sub(r"<img[^>]*>", "", html_str)
+    # keep wiki images as resolvable refs (embedded later as data URIs)
+    html_str = re.sub(r"<img[^>]*>", _img_repl, html_str)
     # empty anchors left over
     html_str = re.sub(r"<a[^>]*>\s*</a>", "", html_str)
 
@@ -245,9 +267,12 @@ def main():
     os.makedirs("data", exist_ok=True)
     with open("data/wiki_data.json", "w", encoding="utf-8") as out:
         json.dump(data, out, ensure_ascii=False)
-    print(f"Pages: {len(pages)}")
+    with open("data/img_map.json", "w", encoding="utf-8") as out:
+        json.dump(IMG_MAP, out)
+    print(f"Pages: {len(pages)} | images referenced: {len(IMG_MAP)}")
     for s in sorted(sections, key=lambda x: -len(sections[x])):
         print(f"  {s}: {len(sections[s])}")
+    return
 
 if __name__ == "__main__":
     main()

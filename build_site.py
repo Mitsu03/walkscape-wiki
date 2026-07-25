@@ -6,6 +6,13 @@ import json, io
 with open("data/wiki_data.json", encoding="utf-8") as f:
     data = json.load(f)
 
+# embed compressed image data-URIs, if the image pipeline has run
+try:
+    with open("data/images.json", encoding="utf-8") as f:
+        data["images"] = json.load(f)
+except FileNotFoundError:
+    data["images"] = {}
+
 # order sections for the sidebar
 SECTION_ORDER = ["Basics & Reference", "Skills", "Activities", "Items",
                  "Locations", "Keywords", "Guides"]
@@ -146,7 +153,12 @@ nav{padding:8px 8px 24px;flex:1}
 [data-theme="dark"] .body thead th{color:var(--pine)}
 .body th,.body td{border-bottom:1px solid var(--line-soft);padding:8px 12px;vertical-align:top}
 .body tbody tr:hover{background:var(--panel)}
-.body img{display:none}
+.body img{max-width:100%}
+.body img.ic{height:1.4em;width:auto;vertical-align:-.24em;margin:0 1px}
+.body img.bl{display:block;max-height:200px;width:auto;margin:14px 0;
+  border-radius:8px;background:var(--panel);padding:6px}
+.body td img.ic,.body th img.ic{height:1.7em}
+.body h1 img,.body h2 img,.body h3 img{height:1em;vertical-align:-.12em}
 
 /* ---------- search results ---------- */
 .results{max-width:calc(var(--measure) + 60px);margin:0 auto;padding:30px 30px 80px}
@@ -257,8 +269,22 @@ function markActive(slug){
   nav.querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.slug===slug));
 }
 
-/* ----- wrap tables for horizontal scroll ----- */
+/* ----- resolve inline images + wrap tables for scroll ----- */
+const IMG=DATA.images||{};
 function enhance(container){
+  container.querySelectorAll('img[data-i]').forEach(img=>{
+    const uri=IMG[img.dataset.i];
+    if(!uri){img.remove();return;}
+    img.src=uri;
+    let block=false;
+    if(!img.closest('td,th')){
+      const p=img.parentElement;
+      if(p&&(p.tagName==='P'||p.tagName==='FIGURE'||p.tagName==='DIV')){
+        if((p.textContent||'').trim().length<3) block=true;
+      }
+    }
+    img.className=block?'bl':'ic';
+  });
   container.querySelectorAll('table').forEach(t=>{
     if(t.parentElement.classList.contains('tablewrap'))return;
     const w=document.createElement('div');w.className='tablewrap';
