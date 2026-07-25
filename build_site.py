@@ -593,7 +593,7 @@ function glyph(section, size){
 /* ---------- thumbnails ---------- */
 function thumb(slug){
   var p = P[slug], uri = p && p.icon ? IMG[p.icon] : null;
-  if (uri) return '<span class="thumb"><img src="' + attr(uri) + '" alt="" loading="lazy"></span>';
+  if (uri) return '<span class="thumb"><img src="' + attr(uri) + '" alt=""></span>';
   return '<span class="thumb">' + glyph(p ? p.section : '', 11) + '</span>';
 }
 

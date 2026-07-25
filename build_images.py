@@ -17,7 +17,7 @@ RASTER_MAX = 128         # max px on the long edge for icons/rasters
 WEBP_Q = 72
 SVG_MAX_BYTES = 22000    # skip absurdly heavy svgs
 RASTER_MAX_BYTES = 14000 # skip rasters that won't compress small enough
-TOTAL_BUDGET = 3_200_000 # cap total data-uri payload (chars)
+TOTAL_BUDGET = 6_200_000 # cap total data-uri payload (chars)
 
 UA = {"User-Agent": "Mozilla/5.0 (WalkScapeCompanion build script)"}
 

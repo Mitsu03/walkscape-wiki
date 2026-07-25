@@ -127,7 +127,57 @@ def clean_markdown(text, title):
     md = re.sub(r"\n{3,}", "\n\n", md).strip()
     # strip collapse arrows / stray unicode markers in headings
     md = md.replace("\u25be", "").replace("\u25b8", "")
+    md = pad_tables(md)
     return md
+
+# --- table normalisation ----------------------------------------------
+# MediaWiki infoboxes render as a table whose *header* is a single merged
+# title cell, but whose body rows have two columns (label | value). The
+# python-markdown tables extension fixes the column count from the header
+# row and silently drops every extra body cell, so all the values (Rarity,
+# Type, Slot, Value...) vanish. Pad the header + delimiter of each table
+# block out to the widest row so those value cells survive.
+_DELIM_RE = re.compile(r"^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$")
+
+def _ncols(line):
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return len(s.split("|"))
+
+def pad_tables(md_text):
+    lines = md_text.split("\n")
+    out, i, n = [], 0, len(lines)
+    while i < n:
+        ln = lines[i]
+        # a table block: a header row (starts with |) immediately followed
+        # by a delimiter row of dashes.
+        if ln.lstrip().startswith("|") and i + 1 < n and \
+                _DELIM_RE.match(lines[i + 1]) and "-" in lines[i + 1]:
+            j = i + 2
+            while j < n and lines[j].lstrip().startswith("|"):
+                j += 1
+            block = lines[i:j]
+            maxc = max(_ncols(b) for b in block)
+            hcols = _ncols(block[0])
+            if maxc > hcols:
+                header = block[0].rstrip()
+                if not header.endswith("|"):
+                    header += " |"
+                header += " |" * (maxc - hcols)
+                delim = "| " + " | ".join(["---"] * maxc) + " |"
+                out.append(header)
+                out.append(delim)
+                out.extend(block[2:])
+            else:
+                out.extend(block)
+            i = j
+            continue
+        out.append(ln)
+        i += 1
+    return "\n".join(out)
 
 # --- link + image rewriting on rendered HTML --------------------------
 GIF_RE = re.compile(r"\.gif($|\?)", re.I)
@@ -143,7 +193,9 @@ def _img_repl(m):
         return ""  # animated gifs are too heavy to inline
     alt = re.search(r'alt="([^"]*)"', tag)
     alt = alt.group(1) if alt else ""
-    return '<img data-i="%s" alt="%s" loading="lazy">' % (img_id(url), alt)
+    # NB: no loading="lazy" — every image is an inline data-URI (no network),
+    # and lazy loading collapses viewBox-only SVG icons to 0 width in tables.
+    return '<img data-i="%s" alt="%s">' % (img_id(url), alt)
 
 def rewrite_html(html_str, have_slugs):
     # keep wiki images as resolvable refs (embedded later as data URIs)
