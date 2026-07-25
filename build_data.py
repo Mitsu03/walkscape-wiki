@@ -45,18 +45,25 @@ def extract_categories(text):
             cats.append(c)
     return cats
 
-CAP = 13000  # max chars of cleaned markdown before we truncate + link out
+HTML_CAP = 46000  # cap on RENDERED html (images are refs, so this is generous)
 
-def cap_markdown(md, source_url):
-    if len(md) <= CAP:
-        return md
-    cut = md.rfind("\n\n", 0, CAP)
-    if cut < CAP * 0.4:
-        cut = CAP
-    trimmed = md[:cut].rstrip()
-    trimmed += ("\n\n> **This is a long reference entry.** The full table "
-                "continues on the [official WalkScape wiki](" + source_url + ") ↗")
-    return trimmed
+def cap_html(h, url):
+    if len(h) <= HTML_CAP:
+        return h
+    # prefer cutting at a table-row boundary so recipe tables stay intact
+    cut = h.rfind("</tr>", 0, HTML_CAP)
+    tail = ""
+    if cut > HTML_CAP * 0.5:
+        h = h[:cut + 5]
+        if h.count("<table>") > h.count("</table>"):
+            tail = "</tbody></table>"
+    else:
+        cut = h.rfind("</p>", 0, HTML_CAP)
+        h = h[:(cut + 4) if cut > 0 else HTML_CAP]
+    note = ('<blockquote><strong>This is a long reference entry.</strong> '
+            'The full list continues on the <a href="%s" target="_blank" '
+            'rel="noopener">official WalkScape wiki</a> ↗</blockquote>' % url)
+    return h + tail + note
 
 def clean_markdown(text, title):
     lines = text.splitlines()
@@ -139,6 +146,12 @@ def rewrite_html(html_str, have_slugs):
         mm = re.match(r"https?://wiki\.walkscape\.app/wiki/([^\"#?]+)", href)
         if mm:
             page = mm.group(1)
+            # MediaWiki language-redirect prefix used by recipe/item links
+            # (e.g. Special:MyLanguage/Copper_bar) -> resolve to the real page
+            for pre in ("Special:MyLanguage/", "Special:MyLanguage:"):
+                if page.startswith(pre):
+                    page = page[len(pre):]
+                    break
             dec = urllib.parse.unquote(page)
             key = dec  # compare against slugs (decoded, underscores)
             if key in have_slugs:
@@ -151,6 +164,9 @@ def rewrite_html(html_str, have_slugs):
         return m.group(0)
 
     html_str = re.sub(r'href="([^"]+)"', repl, html_str)
+    # also clean the language-redirect prefix out of title tooltips
+    html_str = html_str.replace("Special:MyLanguage/", "").replace(
+        "Special:MyLanguage:", "")
     return html_str
 
 # --- categorization ----------------------------------------------------
@@ -229,7 +245,6 @@ def main():
             source_url = "https://wiki.walkscape.app/wiki/WalkScape:_Grind_by_walking!"
         else:
             source_url = "https://wiki.walkscape.app/wiki/" + slug
-        body_md = cap_markdown(body_md, source_url)
         md.reset()
         body_html = md.convert(body_md)
         body_html = rewrite_html(body_html, have)
@@ -242,6 +257,8 @@ def main():
                                body_html, flags=re.S)
         # minify: collapse whitespace-only gaps between tags
         body_html = re.sub(r">\s+<", "><", body_html)
+        if slug != "Home":
+            body_html = cap_html(body_html, source_url)
         section = primary_section(slug, title, cats)
         # plain text for search
         plain = re.sub(r"<[^>]+>", " ", body_html)
