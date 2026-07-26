@@ -173,6 +173,11 @@ a.nrow:hover{text-decoration:none}
   padding:26px 30px 100px;max-width:1240px;width:100%}
 .wrap.solo{grid-template-columns:minmax(0,1fr);max-width:1000px}
 .col{min-width:0;max-width:calc(var(--measure) + 4ch)}
+/* pages with wide data tables let the article track fill; prose stays capped
+   by .body>* below, so only the tables get the extra room */
+.col.wide{max-width:none}
+.col.wide .ahead,.col.wide>.crumbs,.col.wide>.hsec,.col.wide>.quick{
+  max-width:calc(var(--measure) + 4ch)}
 .rail{position:sticky;top:64px;align-self:start;max-height:calc(100vh - 84px);
   overflow-y:auto;padding-bottom:20px}
 
@@ -246,6 +251,14 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .tw tbody tr:nth-child(even){background:color-mix(in srgb,var(--ink) 2.5%,transparent)}
 .tw tbody tr:hover,.tw tbody tr:focus-within{background:var(--tint)}
 .tw td.num{text-align:right;font-family:var(--mono);font-size:.84rem}
+/* sortable recipe-table headers: click to reorder, caret shows the active key */
+.tw th.sortable{cursor:pointer;user-select:none}
+.tw th.sortable:hover{color:var(--ink)}
+.tw th.sortable .sc{opacity:.35;margin-left:.4em;font-family:var(--mono);font-size:.9em}
+.tw th.sortable[aria-sort] .sc{opacity:1;color:var(--accent)}
+.tw th.sortable[aria-sort="descending"] .sc::after{content:"\2193"}
+.tw th.sortable[aria-sort="ascending"] .sc::after{content:"\2191"}
+.tw th.sortable:not([aria-sort]) .sc::after{content:"\2195"}
 .tw[data-stick] tbody th:first-child,.tw[data-stick] tbody td:first-child{
   position:sticky;left:0;background:var(--panel);z-index:1;
   border-right:1px solid var(--line)}
@@ -273,6 +286,29 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
     letter-spacing:.04em;padding-top:2px}
   .tcard dd{margin:0}
 }
+
+/* ============ infobox (key/value cards from wiki infoboxes) ============ */
+.ibx{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);
+  overflow:hidden;margin:0 0 18px;box-shadow:var(--shadow)}
+.ibx-hd{padding:11px 14px;font-family:var(--display);font-weight:600;
+  font-size:1.04rem;line-height:1.25;border-bottom:1px solid var(--line-2);
+  background:var(--panel-2)}
+.ibx-fig{display:grid;place-items:center;padding:18px 16px;background:var(--panel-2);
+  border-bottom:1px solid var(--line-2)}
+.ibx-fig img{max-height:130px;max-width:100%;width:auto;height:auto}
+.ibx dl{margin:0}
+.ibx-row{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);
+  gap:6px 16px;align-items:baseline;padding:9px 14px;font-size:.88rem;
+  border-bottom:1px solid var(--line-2)}
+.ibx dl>.ibx-row:last-child{border-bottom:0}
+.ibx dt{color:var(--ink-2);font-weight:500;white-space:nowrap}
+.ibx dd{margin:0;text-align:right;color:var(--ink)}
+.ibx dd img{height:1.35em;width:auto;vertical-align:-.22em;margin:0 1px}
+.ibx dd a{color:var(--accent)}
+@media (min-width:760px){
+  .body .ibx{float:right;width:290px;margin:4px 0 16px 26px}
+}
+@media (max-width:759px){ .ibx{max-width:420px} }
 
 /* ============ rail / TOC ============ */
 .rlabel{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;
@@ -946,6 +982,218 @@ function renderMissing(what){
 function slugify(s){
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
 }
+
+/* A cell counts as "empty" when it carries neither text nor an image. */
+function cellEmpty(c){
+  return !c || (!c.textContent.trim() && !c.querySelector('img'));
+}
+/* Wiki tables often carry padding rows: fully-blank rows, "---" divider rows,
+   and an all-blank header band. Strip that noise so tiny tables read cleanly. */
+function cleanTable(t){
+  [].forEach.call(t.tBodies, function(tb){
+    [].slice.call(tb.rows).forEach(function(tr){
+      var real = [].some.call(tr.cells, function(c){
+        var tx = c.textContent.trim();
+        return (tx && tx !== '---') || c.querySelector('img');
+      });
+      if (!real) tr.remove();
+    });
+  });
+  if (t.tHead){
+    var blank = [].every.call(t.tHead.rows, function(r){
+      return [].every.call(r.cells, cellEmpty);
+    });
+    if (blank) t.tHead.remove();
+  }
+}
+/* Remove any column that is empty across every row (accounts for the header). */
+function stripEmptyCols(t){
+  var rows = [].slice.call(t.rows);
+  if (!rows.length) return;
+  // colspan/rowspan make index-based deletion unsafe — leave those tables alone
+  for (var r = 0; r < rows.length; r++)
+    for (var k = 0; k < rows[r].cells.length; k++)
+      if (rows[r].cells[k].colSpan > 1 || rows[r].cells[k].rowSpan > 1) return;
+  var ncol = 0;
+  rows.forEach(function(row){ ncol = Math.max(ncol, row.cells.length); });
+  for (var c = ncol - 1; c >= 0; c--){
+    var empty = rows.every(function(row){ return cellEmpty(row.cells[c]); });
+    if (empty) rows.forEach(function(row){ if (row.cells[c]) row.deleteCell(c); });
+  }
+}
+
+/* Some wiki tables give the row's icon its own leading column, which pushes
+   every value one column to the right of its header and leaves a stray empty
+   header at the end. Realign by shifting the header row one column right; then,
+   when that icon column is purely images, merge it into the name column. */
+function foldIconColumn(t){
+  var head = t.tHead && t.tHead.rows.length ? t.tHead.rows[0] : null;
+  var body = t.tBodies.length ? [].slice.call(t.tBodies[0].rows) : [];
+  if (!head || body.length < 2) return;
+  var hc = head.cells, n = hc.length;
+  // tell-tale of the shift: a blank trailing header after a labelled first one
+  if (n < 3 || hc[n - 1].textContent.trim() || !hc[0].textContent.trim()) return;
+  var iconRows = 0, imgOnly = true;
+  body.forEach(function(tr){
+    var c0 = tr.cells[0];
+    if (c0 && c0.querySelector('img') && tr.cells.length === n) iconRows++;
+    if (!(c0 && c0.querySelector('img') && !c0.textContent.trim())) imgOnly = false;
+  });
+  if (iconRows < body.length * 0.6) return;   // first column isn't really icons
+
+  head.insertBefore(document.createElement('th'), hc[0]);  // slide labels right
+  head.deleteCell(head.cells.length - 1);                  // drop trailing blank
+
+  if (imgOnly && body.every(function(tr){ return tr.cells.length === n; })){
+    body.forEach(function(tr){
+      var icon = tr.cells[0], next = tr.cells[1];
+      if (next){ next.insertBefore(document.createTextNode(' '), next.firstChild);
+                 if (icon.firstChild) next.insertBefore(icon.firstChild, next.firstChild); }
+      tr.deleteCell(0);
+    });
+    head.deleteCell(0);   // the icon column is gone, so is its (blank) header
+  }
+}
+
+/* Turn a padded key/value wiki infobox into a clean titled card, or return
+   null when the table is genuinely tabular data. */
+function infobox(t){
+  var title = '';
+  if (t.tHead && t.tHead.rows.length){
+    var hc = [].filter.call(t.tHead.rows[0].cells, function(c){ return c.textContent.trim(); });
+    if (hc.length === 1) title = hc[0].textContent.trim();
+  }
+  var bodyRows = t.tBodies.length ? [].slice.call(t.tBodies[0].rows) : [].slice.call(t.rows);
+  var pairs = [], hero = null, labels = 0, contentRows = 0;
+  bodyRows.forEach(function(tr){
+    var cells = [].filter.call(tr.cells, function(c){ return !cellEmpty(c); });
+    if (!cells.length) return;
+    // skip pure divider rows (e.g. cells that are just "---")
+    if (cells.every(function(c){ return c.textContent.trim() === '---'; })) return;
+    contentRows++;
+    // an image-only row with no label is the hero portrait
+    if (cells.length === 1 && cells[0].querySelector('img') && !cells[0].textContent.trim()){
+      if (!hero) hero = cells[0].querySelector('img');
+      return;
+    }
+    for (var i = 0; i < cells.length; i++){
+      if (/:\s*$/.test(cells[i].textContent.trim())){
+        labels++;
+        var val = cells[i + 1];
+        if (val && !cellEmpty(val)){
+          pairs.push([cells[i].textContent.trim().replace(/:\s*$/, ''), val.innerHTML]);
+          i++;
+        }
+      }
+    }
+  });
+  // require a clear key/value shape, not a data grid that happens to be narrow
+  if (labels < 3 || labels < contentRows * 0.4 || !pairs.length) return null;
+
+  var box = document.createElement('div');
+  box.className = 'ibx';
+  var html = '';
+  if (title) html += '<div class="ibx-hd">' + esc(title) + '</div>';
+  if (hero){
+    var hi = hero.cloneNode(true); hi.removeAttribute('class'); hi.removeAttribute('width');
+    html += '<div class="ibx-fig">' + hi.outerHTML + '</div>';
+  }
+  html += '<dl>' + pairs.map(function(p){
+    return '<div class="ibx-row"><dt>' + esc(p[0]) + '</dt><dd>' + p[1] + '</dd></div>';
+  }).join('') + '</dl>';
+  box.innerHTML = html;
+  return box;
+}
+
+/* Recognise a recipe table (a "recipe ... outputs" header) and locate its
+   output and level columns; returns null for anything that isn't one. */
+function recipeCols(t){
+  var head = (t.tHead && t.tHead.rows[0]) || (t.querySelector('tr'));
+  if (!head) return null;
+  var labels = [].map.call(head.cells, function(c){ return c.textContent.toLowerCase(); });
+  var out = labels.findIndex(function(l){ return l.indexOf('output') >= 0; });
+  if (out < 0 || !labels.some(function(l){ return l.indexOf('recipe') >= 0; })) return null;
+  var lvl = labels.findIndex(function(l){ return l.indexOf('level') >= 0; });
+  return { head: head, out: out, level: lvl };
+}
+/* group key: the output product name minus quantity/parenthetical, last word
+   (depluralised) — "Birch plank"/"Oak plank" -> "plank", "Copper arrows" -> "arrow" */
+function recipeKey(tr, outIdx){
+  var c = tr.cells[outIdx];
+  if (!c) return '';
+  var txt = c.textContent.trim().replace(/\s+/g, ' ')
+    .replace(/^\d+\s*x\s*/i, '').replace(/\(.*?\)/g, '').trim();
+  var w = txt.toLowerCase().split(/[\s\-]+/).filter(Boolean);
+  return (w[w.length - 1] || '').replace(/s$/, '');
+}
+/* Order rows so variants of a product sit together, groups in first-seen (i.e.
+   lowest-level) order and original order preserved within a group. Returns the
+   rows in grouped order without touching the DOM. */
+function groupedOrder(rows, outIdx){
+  var rank = {}, n = 0;
+  rows.forEach(function(r){ var k = recipeKey(r, outIdx); if (!(k in rank)) rank[k] = n++; });
+  return rows.map(function(r, i){ return { r: r, i: i, k: rank[recipeKey(r, outIdx)] }; })
+    .sort(function(a, b){ return (a.k - b.k) || (a.i - b.i); })
+    .map(function(o){ return o.r; });
+}
+/* Recipe tables list one product per row in level order, which scatters the
+   variants of a thing across the table. Reorder to the grouped view. */
+function groupRecipeRows(t){
+  var cols = recipeCols(t), tb = t.tBodies[0];
+  if (!cols || !tb || tb.rows.length < 3) return;
+  groupedOrder([].slice.call(tb.rows), cols.out).forEach(function(r){ tb.appendChild(r); });
+}
+/* Make a recipe table's headers clickable: grouped by product is the default;
+   click Level to sort by level (toggling asc/desc), click any header to sort by
+   it, and click Recipe Outputs to return to the grouped view. The mobile card
+   view is kept in sync by reordering its cards alongside the rows. */
+function sortableRecipe(t, wrap){
+  var cols = recipeCols(t), tb = t.tBodies[0];
+  if (!cols || !tb || tb.rows.length < 3) return;
+  var rows = [].slice.call(tb.rows);
+  rows.forEach(function(r, i){ r.__ri = i; });           // stable identity for tie-breaks + cards
+  var cards = wrap.querySelector('.tcards');
+  var cardEls = cards ? [].slice.call(cards.children) : null;   // built in row order
+
+  function levelOf(tr){ var m = (tr.cells[cols.level] || {}).textContent || '';
+    m = m.match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : NaN; }
+  function textOf(tr, i){ return ((tr.cells[i] || {}).textContent || '').trim().toLowerCase(); }
+  function apply(order){
+    order.forEach(function(r){ tb.appendChild(r); });
+    if (cardEls) order.forEach(function(r){ if (cardEls[r.__ri]) cards.appendChild(cardEls[r.__ri]); });
+  }
+  var state = { col: -1, dir: 1 };   // col -1 == grouped (the default)
+  function sortBy(col){
+    var numeric = (col === cols.level);
+    var order = rows.slice().sort(function(a, b){
+      var d;
+      if (numeric){ var av = levelOf(a), bv = levelOf(b);
+        d = (isNaN(av) ? Infinity : av) - (isNaN(bv) ? Infinity : bv); }
+      else d = textOf(a, col).localeCompare(textOf(b, col));
+      return (d * state.dir) || (a.__ri - b.__ri);   // stable within equal keys
+    });
+    apply(order);
+  }
+  [].forEach.call(cols.head.cells, function(th, i){
+    th.classList.add('sortable');
+    if (!th.querySelector('.sc')){
+      var sc = document.createElement('span'); sc.className = 'sc'; sc.setAttribute('aria-hidden', 'true');
+      th.appendChild(sc);
+    }
+    th.addEventListener('click', function(){
+      [].forEach.call(cols.head.cells, function(h){ h.removeAttribute('aria-sort'); });
+      if (i === cols.out){                       // Recipe Outputs -> grouped view
+        state.col = -1;
+        apply(groupedOrder(rows, cols.out));
+        return;
+      }
+      state.dir = (state.col === i) ? -state.dir : 1;   // toggle direction on re-click
+      state.col = i;
+      th.setAttribute('aria-sort', state.dir === 1 ? 'ascending' : 'descending');
+      sortBy(i);
+    });
+  });
+}
 function enhance(root){
   if (!root) return;
   root.querySelectorAll('img[data-i]').forEach(function(img){
@@ -996,7 +1244,23 @@ function enhance(root){
   });
 
   root.querySelectorAll('table').forEach(function(t){
-    if (t.closest('.tw')) return;
+    if (t.closest('.tw') || t.closest('.ibx')) return;
+
+    cleanTable(t);
+
+    // Many wiki "tables" are really key/value infoboxes padded out with empty
+    // columns. Detect those and render a clean card instead of a sparse grid.
+    var card = infobox(t);
+    if (card){ t.replaceWith(card); return; }
+
+    // For real data tables: realign icon columns, then drop dead columns.
+    foldIconColumn(t);
+    stripEmptyCols(t);
+
+    // cluster recipe rows by output product (planks, arrows, ...) before the
+    // scroll wrapper and mobile cards are built from the row order
+    groupRecipeRows(t);
+
     var wrap = document.createElement('div'); wrap.className = 'tw';
     var sc = document.createElement('div'); sc.className = 'tscroll';
     t.parentNode.insertBefore(wrap, t);
@@ -1033,9 +1297,9 @@ function enhance(root){
 
     // mobile card view for narrow-enough tables, built from the real table so
     // the semantic table is never destroyed - it is simply swapped out by CSS
-    if (heads.length >= 2 && heads.length <= 5){
+    if (heads.length >= 2 && heads.length <= 12){
       var rows = t.querySelectorAll('tbody tr');
-      if (rows.length && rows.length <= 60){
+      if (rows.length && rows.length <= 80){
         var box = document.createElement('div');
         box.className = 'tcards';
         box.setAttribute('aria-hidden', 'true');
@@ -1059,6 +1323,10 @@ function enhance(root){
       }
     }
 
+    // recipe tables: grouped by product by default, but headers are clickable
+    // (Level re-sorts by level, Recipe Outputs restores the grouped view)
+    sortableRecipe(t, wrap);
+
     var upd = function(){
       if (sc.scrollWidth - sc.clientWidth > 4 && sc.scrollLeft + sc.clientWidth < sc.scrollWidth - 4)
         wrap.setAttribute('data-over', '');
@@ -1068,6 +1336,18 @@ function enhance(root){
     addEventListener('resize', upd);
     setTimeout(upd, 30);
   });
+
+  // give the article extra horizontal room when it holds a genuinely wide table
+  var col = root.closest && root.closest('.col');
+  if (col){
+    // widen only when a wide table is present and no floating infobox would be
+    // left stranded to the right of the (still narrow) prose
+    var wide = !root.querySelector('.ibx') &&
+      [].some.call(root.querySelectorAll('.tw table'), function(tb){
+        return tb.rows[0] && tb.rows[0].cells.length > 6;
+      });
+    col.classList.toggle('wide', wide);
+  }
 }
 
 /* ---------- right rail: TOC + related ---------- */
