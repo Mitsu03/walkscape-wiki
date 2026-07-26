@@ -4,6 +4,8 @@ A cleaner, faster reference for [WalkScape](https://walkscape.app) — the walk-
 Built because the official [wiki](https://wiki.walkscape.app) is comprehensive but hard to browse
 on a phone, mid-walk.
 
+**Repository:** [github.com/Mitsu03/walkscape-wiki](https://github.com/Mitsu03/walkscape-wiki)
+
 ## What this is
 
 A single-file, self-contained web app (`index.html`) — no server, no network, no dependencies:
@@ -92,3 +94,5 @@ Notable calls:
 Content is derived from the community WalkScape wiki (wiki.walkscape.app), reorganized for
 easier navigation. All game content © the WalkScape team / wiki contributors. This is an
 unofficial personal companion tool.
+
+Source code: [github.com/Mitsu03/walkscape-wiki](https://github.com/Mitsu03/walkscape-wiki)
