@@ -4,6 +4,7 @@ A cleaner, faster reference for [WalkScape](https://walkscape.app) — the walk-
 Built because the official [wiki](https://wiki.walkscape.app) is comprehensive but hard to browse
 on a phone, mid-walk.
 
+**Live site:** [mitsu03.github.io/walkscape-wiki](https://mitsu03.github.io/walkscape-wiki/)
 **Repository:** [github.com/Mitsu03/walkscape-wiki](https://github.com/Mitsu03/walkscape-wiki)
 
 ## What this is
