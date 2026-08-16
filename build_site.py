@@ -179,8 +179,12 @@ a.nrow:hover{text-decoration:none}
 .crumbs .seg:last-child .lnk{color:var(--ink);font-weight:600}
 
 /* ============ content ============ */
+/* margin-inline:auto is load-bearing: .main is a flex column, so a child with a
+   max-width sits at the start of the cross axis. Without it the whole page
+   pinned left and dumped every spare pixel in one block on the right, which on
+   a wide monitor looks like a broken layout rather than a margin. */
 .wrap{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);gap:36px;
-  padding:26px 30px 100px;max-width:1240px;width:100%}
+  padding:26px 30px 100px;max-width:1240px;width:100%;margin-inline:auto}
 .wrap.solo{grid-template-columns:minmax(0,1fr);max-width:1000px}
 .col{min-width:0;max-width:calc(var(--measure) + 4ch)}
 /* pages with wide data tables let the article track fill; prose stays capped
@@ -420,7 +424,7 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .empty .acts{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
 
 /* ============ home ============ */
-.home{padding:30px 30px 100px;max-width:1080px;width:100%}
+.home{padding:30px 30px 100px;max-width:1080px;width:100%;margin-inline:auto}
 .hhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
 .hhead h1{font-size:1.9rem;margin:0;line-height:1.1}
 .hsub{color:var(--ink-2);margin:6px 0 22px;max-width:60ch}
@@ -509,6 +513,19 @@ mark{background:color-mix(in srgb,var(--amber) 34%,transparent);color:inherit;
 .sheet.on{display:block}
 
 /* ============ responsive ============ */
+/* Wide monitors. Only the layouts whose column is unconstrained grow: category
+   pages and the home page set .col to max-width:none, so extra width becomes
+   more cards per row. Article prose is deliberately NOT widened - it stays at
+   --measure (70ch), because a 1700px line of body text is unreadable. On an
+   article the spare width is margin, and now symmetric margin. */
+@media (min-width:1500px){
+  .wrap.solo{max-width:1320px}
+  .home{max-width:1320px}
+}
+@media (min-width:1920px){
+  .wrap.solo{max-width:1560px}
+  .home{max-width:1500px}
+}
 @media (max-width:1180px){
   .wrap{grid-template-columns:minmax(0,1fr);gap:0}
   .rail{display:none}
