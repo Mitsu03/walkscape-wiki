@@ -371,13 +371,16 @@ ITEM_SUBS = [
                       "tomato", "honeycomb", "berries", "jellyfish", "squid"),
                      ("food", "cooked", "edible")),
     ("Consumables",  (), ("consumable", "potion", "drink")),
-    ("Cosmetics",    ("sunglasses", "sneakers", "cape", "cool_", "teddy"),
+    # "^cape" is a token match, not a substring: a bare "cape" also matched
+    # walkscape, landscape and escape, which filed the wiki's own main page
+    # as a cosmetic. "^" still matches "cape_of_achiever" and "feather_cape".
+    ("Cosmetics",    ("sunglasses", "sneakers", "^cape", "cool_", "teddy"),
                      ("cosmetic",)),
     ("Collectibles", ("memosphere", "tusk", "tear", "clam_shell", "feather",
                       "shell", "butterfly", "bauble", "horn_of"),
                      ("collectible", "lore item", "lore")),
     ("Gear",         ("ring", "trinket", "shield", "sword", "hat", "jacket",
-                      "handwraps", "crown", "cape", "boots", "armour",
+                      "handwraps", "crown", "^cape", "boots", "armour",
                       "armor", "helm", "gloves", "belt", "amulet"),
                      ("gear", "equipment", "weapon", "armour", "armor",
                       "ring", "trinket", "jewellery", "jewelry", "clothing")),
@@ -402,8 +405,27 @@ ACT_SUBS = [
 ]
 
 
+_WORD_NEEDLE = {}
+
+
 def _hit(needles, haystack):
-    return any(n in haystack for n in needles)
+    """Substring match, except a needle written "^x" must match x at a token
+    boundary - the start of the slug or just after an underscore.
+
+    Slugs are underscore-separated, so a bare substring silently matches inside
+    longer words: "cape" hit walkscape, landscape and escape, which is how the
+    wiki's own main page ended up filed as a cosmetic.
+    """
+    for n in needles:
+        if n.startswith("^"):
+            rx = _WORD_NEEDLE.get(n)
+            if rx is None:
+                rx = _WORD_NEEDLE[n] = re.compile(r"(?:^|_)" + re.escape(n[1:]))
+            if rx.search(haystack):
+                return True
+        elif n in haystack:
+            return True
+    return False
 
 
 def classify(slug, title, cats):

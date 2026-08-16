@@ -23,12 +23,36 @@ LANG_RE = re.compile(r"[-./](de|fr|es|it|pt|pl|nl|ru|zh|ja|ko|tr|cs|fi|sv|da"
 
 urls = set()
 
+
+def keep(page):
+    """One filter for every source. The sitemap seed used to bypass these
+    checks, which is how the main page - excluded by name right below, and
+    already handled apart as data/home.md - got into the manifest and shipped
+    as a duplicate entry."""
+    if any(page.startswith(p) for p in EXCLUDE_PREFIX):
+        return False
+    if page in EXCLUDE_EXACT:
+        return False
+    if any(c in page for c in EXCLUDE_CONTAINS):
+        return False
+    if "?" in page or "=" in page:      # anchors / query strings
+        return False
+    if LANG_RE.search(page):
+        return False
+    return True
+
+
+def add(page):
+    if keep(page):
+        urls.add(BASE + urllib.parse.quote(page))
+
+
 # 1. sitemap urls
 if os.path.exists("data/urls.txt"):
     for line in open("data/urls.txt", encoding="utf-8"):
         u = line.strip()
         if u.startswith(BASE):
-            urls.add(u)
+            add(urllib.parse.unquote(u[len(BASE):]))
 
 # 2. links from all cached pages
 # NB: ")" is deliberately allowed in the match. Wiki titles like
@@ -60,19 +84,7 @@ for f in glob.glob(os.path.join(cache, "*.md")):
     txt = open(f, encoding="utf-8", errors="ignore").read()
     for m in link_re.findall(txt):
         page = trim_parens(m).rstrip(".,")
-        page = urllib.parse.unquote(page)
-        if any(page.startswith(p) for p in EXCLUDE_PREFIX):
-            continue
-        if page in EXCLUDE_EXACT:
-            continue
-        if any(c in page for c in EXCLUDE_CONTAINS):
-            continue
-        # skip anchors / query
-        if "?" in page or "=" in page:
-            continue
-        if LANG_RE.search(page):
-            continue
-        urls.add(BASE + urllib.parse.quote(page))
+        add(urllib.parse.unquote(page))
 
 urls = sorted(urls)
 with open("data/master_urls.txt", "w", encoding="utf-8") as out:

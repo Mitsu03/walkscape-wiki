@@ -678,27 +678,55 @@ var IDX = Object.keys(P).map(function(slug){
 });
 IDX.sort(function(a, b){ return a.lc < b.lc ? -1 : 1; });
 
+/* a query is its words: "iron bar" should find "Iron bar" and "Bar of iron",
+   and "bar iron" should find them too */
+function words(term){
+  var t = String(term == null ? '' : term).trim().toLowerCase();
+  return t ? t.split(/\s+/) : [];
+}
+function rx(s){ return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function scoreWord(e, t){
+  if (e.lc === t) return 100;
+  if (e.lc.indexOf(t) === 0) return 70;
+  if (e.lc.indexOf(' ' + t) > -1) return 55;
+  if (e.lc.indexOf(t) > -1) return 40;
+  if (e.tlc.indexOf(t) > -1) return 12;
+  return 0;
+}
+/* the phrase as typed always scores first; a scattered every-word match is
+   capped below the weakest title hit (40), so exact wording still wins */
+function scoreEntry(e, phrase, w){
+  var s = scoreWord(e, phrase);
+  if (s || w.length < 2) return s;
+  var total = 0;
+  for (var i = 0; i < w.length; i++){
+    var v = scoreWord(e, w[i]);
+    if (!v) return 0;                 // every word has to turn up somewhere
+    total += v;
+  }
+  return Math.min(38, Math.round(total / w.length) - 4);
+}
 function query(term, limit){
-  var t = term.trim().toLowerCase();
+  var t = String(term == null ? '' : term).trim().toLowerCase(), w = words(t);
   if (!t) return [];
   var out = [];
   for (var i = 0; i < IDX.length; i++){
-    var e = IDX[i], s = 0;
-    if (e.lc === t) s = 100;
-    else if (e.lc.indexOf(t) === 0) s = 70;
-    else if (e.lc.indexOf(' ' + t) > -1) s = 55;
-    else if (e.lc.indexOf(t) > -1) s = 40;
-    else if (e.tlc.indexOf(t) > -1) s = 12;
-    if (s){ if (e.sub === 'Index') s -= 6; out.push([s, e]); }
+    var e = IDX[i], s = scoreEntry(e, t, w);
+    if (s > 0){ if (e.sub === 'Index') s -= 6; out.push([s, e]); }
   }
   out.sort(function(a, b){ return b[0] - a[0] || (a[1].lc < b[1].lc ? -1 : 1); });
   return out.slice(0, limit || 40).map(function(x){ return x[1]; });
 }
 function highlight(text, term){
-  var t = term.trim();
-  if (!t) return esc(text);
-  var re = new RegExp('(' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
-  return esc(text).replace(re, '<mark>$1</mark>');
+  var w = words(term);
+  if (!w.length) return esc(text);
+  w.sort(function(a, b){ return b.length - a.length; });  // longest wins overlaps
+  var re = new RegExp('(' + w.map(rx).join('|') + ')', 'ig');
+  /* mark first, escape after: the sentinels survive esc() untouched, which
+     keeps the tags out of the escaped text and stops a query like "amp"
+     from lighting up the inside of an &amp; entity */
+  return esc(String(text == null ? '' : text).replace(re, '\u0001$1\u0002'))
+    .replace(/\u0001/g, '<mark>').replace(/\u0002/g, '</mark>');
 }
 
 /* ---------- recents (localStorage only) ---------- */
@@ -866,11 +894,17 @@ function renderCategory(sec){
 function paintCategory(){
   var sec = catState.section, m = metaOf(sec), subs = SUBS[sec] || [];
   var all = (SEC[sec] || []).slice();
-  var q = catState.q.trim().toLowerCase();
+  var q = catState.q.trim().toLowerCase(), qw = words(q);
   var list = all.filter(function(s){
     if (catState.sub !== 'All' && P[s].sub !== catState.sub) return false;
-    if (q && P[s].title.toLowerCase().indexOf(q) < 0 &&
-        (P[s].text || '').toLowerCase().indexOf(q) < 0) return false;
+    if (qw.length){
+      /* every word, in the title or the excerpt - same rule as the palette.
+         The \u0000 seam stops a word matching across the title/text join. */
+      var hay = P[s].title.toLowerCase() + '\u0000' + (P[s].text || '').toLowerCase();
+      for (var i = 0; i < qw.length; i++){
+        if (hay.indexOf(qw[i]) < 0) return false;
+      }
+    }
     return true;
   });
   if (catState.sort === 'rec'){
