@@ -10,7 +10,8 @@ on a phone, mid-walk.
 
 A single-file, self-contained web app (`index.html`) — no server, no network, no dependencies:
 
-- **Command palette search** (`/` or `Ctrl`/`Cmd`+`K`) with results grouped by category
+- **Command palette search** (`/` or `Ctrl`/`Cmd`+`K`) with results grouped by category —
+  multi-word queries match in any order, so "bar copper" finds "Copper bar"
 - **Eight categories**: Start Here, Skills, Activities, Items & Equipment, Locations,
   Game Systems, Guides, Glossary
 - **Category pages** with in-category filtering, subtype chips, sort and list/grid layouts

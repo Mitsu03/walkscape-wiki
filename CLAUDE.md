@@ -62,6 +62,15 @@ are fetched. `--list` shows the work list, `--limit N` caps it.
 so out of the box only `build_site.py` can run — which is enough for any UI work, since
 `data/wiki_data.json` and `data/images.json` are committed.
 
+**Encoding gotcha:** cache filenames keep the page title percent-encoded, so `classify()`
+decodes the slug before matching anything, and page keys are stored decoded. Namespaced pages
+arrive as `Guide%3AMoney_Making` and would otherwise miss the `Guide:` prefix entirely — this
+one convention mismatch previously produced four separate-looking bugs, including dead links
+that shipped. When a page key and a URL disagree, suspect this first.
+
+**Needle gotcha:** `_hit()` matches substrings, which silently match inside longer words —
+`"cape"` also hit walkscape, landscape and escape. Write `"^cape"` for a token-boundary match.
+
 **`fetch_pages.py` gotcha:** markdownify drops an `<img>` in an inline context and emits
 only its alt text. Nearly every wiki image is wrapped in an `<a>` file link — including the
 infobox portrait that becomes each page's icon — so `keep_inline_images_in` is load-bearing,
