@@ -1262,8 +1262,15 @@ function navGroups(t){
   // must still be a link, which is what separates these from a data table's
   // header row.
   if (!titled.length || titled.length > 4) return null;
+  // Usually every title is a link to the keyword page. On the keyword pages
+  // themselves the cell is the plain words "Item Name" instead, so require
+  // either all-linked or a single short unlinked caption - the rest of the
+  // tests below are what actually carry the decision.
   var allLinked = titled.every(function(c){ return !!c.querySelector('a'); });
-  if (!allLinked) return null;
+  if (!allLinked &&
+      !(titled.length === 1 && titled[0].textContent.trim().length <= 24)){
+    return null;
+  }
 
   var body = t.tBodies.length ? [].slice.call(t.tBodies[0].rows)
     : [].slice.call(t.rows).slice(1);
@@ -1275,7 +1282,18 @@ function navGroups(t){
       total++; if (c.textContent.trim() === '---') dashes++;
     });
   });
-  if (dashes < 6 || dashes / total < 0.03) return null;
+  // The "---" padding is the fingerprint, but its density varies: Bronze_arrows'
+  // strip carries only 4. Require a handful of dashes OR a body that is
+  // overwhelmingly links, which is what a link strip is and what a data table
+  // with this many columns is not.
+  var links = 0;
+  body.forEach(function(tr){
+    links += tr.querySelectorAll('a').length;
+  });
+  var linky = total > 0 && links / total > 0.25;
+  if (!(dashes >= 6 && dashes / total >= 0.03) && !(dashes >= 2 && linky)) {
+    return null;
+  }
 
   return { titles: titled, rows: body };
 }
@@ -1629,24 +1647,38 @@ function enhance(root){
       [].forEach.call(root.querySelectorAll('.tscroll'), function(sc){
         if (sc.scrollWidth > need) need = sc.scrollWidth;
       });
-      var wide = need - avail > 8;
-      col.classList.toggle('wide', wide);
-      // Grow to exactly what the widest table needs, never further. Letting the
-      // widened layout fill the window instead made a 5-column table span an
-      // ultrawide monitor, dwarfing the prose beside it. The viewport is the
-      // ceiling, not the target: width:100% on .wrap clamps this when the table
-      // needs more than there is, and the table scrolls as before.
-      if (wide && wrap){
+      // Only widen when widening actually resolves the overflow. Some wiki
+      // tables are diagrams drawn in table cells - crafting trees, route maps -
+      // and run to hundreds of columns; Hydrilium_sickle's is 3 rows by 296.
+      // Growing the article for those buys nothing, because the table scrolls
+      // either way, and it leaves 70ch of prose stranded beside a full-width
+      // slab. If it cannot fit, leave the layout balanced and let it scroll.
+      // everything in the row that is not the article column: padding, and the
+      // TOC rail plus its gap when the rail is actually on screen (it is
+      // display:none on narrow viewports, and then its gap is not in play)
+      var extra = 0, room = avail;
+      if (wrap){
         var cs = getComputedStyle(wrap);
-        var extra = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        extra = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
         var railEl = wrap.querySelector('.rail');
-        // the rail is display:none on narrow viewports, and then its gap is
-        // not in play either
         if (railEl && railEl.offsetWidth){
           extra += railEl.offsetWidth + (parseFloat(cs.columnGap) || 0);
         }
-        wrap.style.maxWidth = Math.ceil(need + extra) + 'px';
+        room = wrap.parentElement.clientWidth - extra;
       }
+      // Widen when it meaningfully helps, which is not the same as "whenever
+      // there is overflow". Some wiki tables are diagrams drawn in table cells
+      // - crafting trees, route maps - running to hundreds of columns;
+      // Hydrilium_sickle's is 3 rows by 296 and needs about ten screens. Those
+      // scroll whatever we do, so widening only strands 70ch of prose beside a
+      // full-width slab. The 1.5 allows a table that nearly fits to take the
+      // room and show most of itself.
+      var wide = need - avail > 8 && need <= room * 1.5;
+      col.classList.toggle('wide', wide);
+      // Grow to exactly what the widest table needs, never further. Letting the
+      // widened layout fill the window instead made a 5-column table span an
+      // ultrawide monitor, dwarfing the prose beside it.
+      if (wide && wrap) wrap.style.maxWidth = Math.ceil(need + extra) + 'px';
     };
     fitWide();
     // Table icons are data-URI images with no intrinsic width in the markup, so
