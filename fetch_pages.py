@@ -208,16 +208,20 @@ def load_redirects():
         return {}
 
 
-def save_redirects(found, visited):
+def save_redirects(found, resolved):
     """Merge this run's findings into the committed map.
 
-    Only slugs we actually visited are updated, so a partial run (--limit, or
-    an incremental fetch) narrows the map instead of wiping it. A slug that was
-    a redirect and now resolves to itself is dropped: the wiki turned it into a
-    real page and it should come back as one.
+    Only slugs the wiki actually answered for are updated, so a partial run
+    (--limit, or an incremental fetch) narrows the map instead of wiping it. A
+    slug that was a redirect and now resolves to itself is dropped: the wiki
+    turned it into a real page and it should come back as one.
+
+    A slug that failed to fetch is deliberately NOT in `resolved`. A network
+    error says nothing about whether the page is a redirect, and forgetting
+    that it was one would let a stale cache entry build as a duplicate again.
     """
     redir = load_redirects()
-    for slug in visited:
+    for slug in resolved:
         redir.pop(slug, None)
     redir.update(found)
     with open(REDIRECTS_FILE, "w", encoding="utf-8") as f:
@@ -254,7 +258,7 @@ def main():
     ok = failed = 0
     errors = []
     redirected = {}
-    visited = []
+    resolved = []          # answered by the wiki: a page or a redirect, not an error
     # A queue, not a list: resolving a redirect can reveal a target that is not
     # in the manifest yet (Gem_Pouches -> Gem_pouch), and that target still has
     # to be fetched or the redirect drops real content instead of a duplicate.
@@ -269,7 +273,8 @@ def main():
             doc, err, target = fetch_page(slug)
         except Exception as e:                       # noqa: BLE001
             doc, err, target = None, "%s: %s" % (type(e).__name__, e), None
-        visited.append(slug)
+        if doc is not None or target:
+            resolved.append(slug)
         if target:
             redirected[slug] = target
             # A stale cache file would otherwise keep serving the duplicate;
@@ -294,7 +299,7 @@ def main():
                   % (i, total, ok, len(redirected), failed))
         time.sleep(args.pause)
 
-    save_redirects(redirected, visited)
+    save_redirects(redirected, resolved)
     print("done: %d fetched, %d redirects skipped, %d failed"
           % (ok, len(redirected), failed))
     if redirected:
