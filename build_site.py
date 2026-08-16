@@ -327,6 +327,12 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .ibx dd a{color:var(--accent)}
 @media (min-width:760px){
   .body .ibx{float:right;width:290px;margin:4px 0 16px 26px}
+  /* In a widened column the prose stays at --measure, so a plain float:right
+     would strand the infobox against the far edge with a lake of blank between.
+     Push it back inwards so it sits just past the text. Clamped at 0 so it
+     degrades to ordinary float:right whenever there is no surplus width. */
+  .col.wide .body>.ibx{
+    margin-right:max(0px,calc(100% - var(--measure) - 316px))}
 }
 @media (max-width:759px){ .ibx{max-width:420px} }
 
@@ -521,10 +527,16 @@ mark{background:color-mix(in srgb,var(--amber) 34%,transparent);color:inherit;
 @media (min-width:1500px){
   .wrap.solo{max-width:1320px}
   .home{max-width:1320px}
+  /* .wideg is set by enhance() only when a table overflowed. Plain articles
+     keep the 1240px cap on purpose: widening the grid there would not widen the
+     prose (it is capped at --measure), it would just tear a gap between the
+     text and the TOC rail. */
+  .wrap.wideg{max-width:1560px}
 }
 @media (min-width:1920px){
   .wrap.solo{max-width:1560px}
   .home{max-width:1500px}
+  .wrap.wideg{max-width:1840px}
 }
 @media (max-width:1180px){
   .wrap{grid-template-columns:minmax(0,1fr);gap:0}
@@ -1433,16 +1445,38 @@ function enhance(root){
     setTimeout(upd, 30);
   });
 
-  // give the article extra horizontal room when it holds a genuinely wide table
+  // give the article extra horizontal room when a table actually needs it.
+  // The old test was "more than 6 columns and no infobox", which left plenty of
+  // squeezed 4- and 5-column tables scrolling inside a 70ch well while the
+  // window had room to spare. Ask the table instead: measure it narrow, and
+  // widen only if it genuinely overflows. Measuring with .wide removed first
+  // keeps the decision stable - otherwise widening removes the overflow that
+  // justified it and the class oscillates.
   var col = root.closest && root.closest('.col');
   if (col){
-    // widen only when a wide table is present and no floating infobox would be
-    // left stranded to the right of the (still narrow) prose
-    var wide = !root.querySelector('.ibx') &&
-      [].some.call(root.querySelectorAll('.tw table'), function(tb){
-        return tb.rows[0] && tb.rows[0].cells.length > 6;
+    var wrap = col.closest('.wrap');
+    var fitWide = function(){
+      // enhance() runs on every navigation, so without this the resize
+      // listeners pile up, one per article visited, each pinning a detached
+      // column in memory.
+      if (!col.isConnected){ removeEventListener('resize', fitWide); return; }
+      // measure narrow, then decide
+      col.classList.remove('wide');
+      if (wrap) wrap.classList.remove('wideg');
+      var wide = [].some.call(root.querySelectorAll('.tscroll'), function(sc){
+        return sc.scrollWidth - sc.clientWidth > 8;
       });
-    col.classList.toggle('wide', wide);
+      col.classList.toggle('wide', wide);
+      // the wrap has its own cap; lift it too, or the column cannot grow
+      if (wrap) wrap.classList.toggle('wideg', wide);
+    };
+    fitWide();
+    // Table icons are data-URI images with no intrinsic width in the markup, so
+    // the first measurement can happen before they have laid out and report a
+    // table narrower than it ends up. Re-check once things settle, and on
+    // resize, since the threshold moves with the viewport.
+    setTimeout(fitWide, 60);
+    addEventListener('resize', fitWide);
   }
 }
 
