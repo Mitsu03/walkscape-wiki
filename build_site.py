@@ -1133,10 +1133,28 @@ function slugify(s){
 
 /* A cell counts as "empty" when it carries neither text nor an image. */
 function cellEmpty(c){
-  return !c || (!c.textContent.trim() && !c.querySelector('img'));
+  if (!c) return true;
+  var t = c.textContent.trim();
+  // "---" is the wiki's spacer token, not content. Counting it as content kept
+  // entire columns of it alive through stripEmptyCols: Adamant_hatchet's
+  // crafting table was 217 columns of which 171 held nothing but dashes.
+  // A cell carrying an image is never empty whatever its text says.
+  if (t === '---') t = '';
+  return !t && !c.querySelector('img');
 }
 /* Wiki tables often carry padding rows: fully-blank rows, "---" divider rows,
    and an all-blank header band. Strip that noise so tiny tables read cleanly. */
+/* "---" is the wiki's spacer token. cellEmpty() already treats it as nothing,
+   so leaving it on screen contradicts that: a cell we consider empty should
+   look empty. Must run AFTER navboxify - the density of "---" cells is the
+   fingerprint navGroups() identifies a keyword strip by, and blanking them
+   first took navbox detection from 561 tables to zero. */
+function blankSpacers(t){
+  [].forEach.call(t.querySelectorAll('td,th'), function(c){
+    if (c.textContent.trim() === '---' && !c.querySelector('img')) c.textContent = '';
+  });
+}
+
 function cleanTable(t){
   [].forEach.call(t.tBodies, function(tb){
     [].slice.call(tb.rows).forEach(function(tr){
@@ -1254,6 +1272,13 @@ function infobox(t){
   });
   // require a clear key/value shape, not a data grid that happens to be narrow
   if (labels < 3 || labels < contentRows * 0.4 || !pairs.length) return null;
+  // An infobox always names its subject. The Cosmetics page carries
+  // "Images | Information" gallery tables listing dozens of items each, whose
+  // repeated "Name:/Description:/Sources:" cells look exactly like key/value
+  // pairs - they were becoming untitled cards of up to 224 rows, floated into
+  // a 290px column. Requiring a title separates them: every one of the 744
+  // real infoboxes in the corpus has one, and all 11 of those galleries do not.
+  if (!title) return null;
 
   var box = document.createElement('div');
   box.className = 'ibx';
@@ -1661,7 +1686,9 @@ function enhance(root){
     var nbx = navboxify(t);
     if (nbx){ t.replaceWith(nbx); return; }
 
-    // For real data tables: realign icon columns, then drop dead columns.
+    // For real data tables: drop the spacer text, realign icon columns, then
+    // drop dead columns.
+    blankSpacers(t);
     foldIconColumn(t);
     stripEmptyCols(t);
 
