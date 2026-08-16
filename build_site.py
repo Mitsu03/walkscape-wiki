@@ -1634,7 +1634,6 @@ function enhance(root){
   // justified it and the class oscillates.
   var col = root.closest && root.closest('.col');
   if (col){
-    var wrap = col.closest('.wrap');
     var fitWide = function(){
       // enhance() runs on every navigation, so without this the resize
       // listeners pile up, one per article visited, each pinning a detached
@@ -1642,43 +1641,22 @@ function enhance(root){
       if (!col.isConnected){ removeEventListener('resize', fitWide); return; }
       // measure narrow, then decide
       col.classList.remove('wide');
-      if (wrap) wrap.style.maxWidth = '';
       var avail = col.clientWidth, need = 0;
       [].forEach.call(root.querySelectorAll('.tscroll'), function(sc){
         if (sc.scrollWidth > need) need = sc.scrollWidth;
       });
-      // Only widen when widening actually resolves the overflow. Some wiki
-      // tables are diagrams drawn in table cells - crafting trees, route maps -
-      // and run to hundreds of columns; Hydrilium_sickle's is 3 rows by 296.
-      // Growing the article for those buys nothing, because the table scrolls
-      // either way, and it leaves 70ch of prose stranded beside a full-width
-      // slab. If it cannot fit, leave the layout balanced and let it scroll.
-      // everything in the row that is not the article column: padding, and the
-      // TOC rail plus its gap when the rail is actually on screen (it is
-      // display:none on narrow viewports, and then its gap is not in play)
-      var extra = 0, room = avail;
-      if (wrap){
-        var cs = getComputedStyle(wrap);
-        extra = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-        var railEl = wrap.querySelector('.rail');
-        if (railEl && railEl.offsetWidth){
-          extra += railEl.offsetWidth + (parseFloat(cs.columnGap) || 0);
-        }
-        room = wrap.parentElement.clientWidth - extra;
-      }
-      // Widen when it meaningfully helps, which is not the same as "whenever
-      // there is overflow". Some wiki tables are diagrams drawn in table cells
-      // - crafting trees, route maps - running to hundreds of columns;
-      // Hydrilium_sickle's is 3 rows by 296 and needs about ten screens. Those
-      // scroll whatever we do, so widening only strands 70ch of prose beside a
-      // full-width slab. The 1.5 allows a table that nearly fits to take the
-      // room and show most of itself.
-      var wide = need - avail > 8 && need <= room * 1.5;
-      col.classList.toggle('wide', wide);
-      // Grow to exactly what the widest table needs, never further. Letting the
-      // widened layout fill the window instead made a 5-column table span an
-      // ultrawide monitor, dwarfing the prose beside it.
-      if (wide && wrap) wrap.style.maxWidth = Math.ceil(need + extra) + 'px';
+      // Widen the COLUMN inside the article, never the article itself.
+      // Sizing the wrap to its widest table made page geometry depend on page
+      // content: Adamant_hatchet, whose recipe table runs to 9 columns, sat at
+      // a different width and position from Adventuring_sander, whose widest
+      // strip is a navbox and so overflows nothing. Two articles, two layouts,
+      // for a reason no reader can see.
+      //
+      // Every article now has identical geometry. .col.wide still hands a wide
+      // table the whole track - about 900px against the 70ch prose measure -
+      // and anything wider than that scrolls, which it did at any width: the
+      // crafting-tree tables run to 296 columns and no layout fits them.
+      col.classList.toggle('wide', need - avail > 8);
     };
     fitWide();
     // Table icons are data-URI images with no intrinsic width in the markup, so
