@@ -354,6 +354,9 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
   border-bottom:1px solid var(--line-2);background:var(--panel-2)}
 .nbx-hd img{height:1.4em;width:auto}
 .nbx-hd a{color:inherit}
+/* an item can belong to several keyword groups, and the wiki merges them into
+   one navbox with a title each */
+.nbx-sep{color:var(--ink-3);margin:0 2px;font-weight:400}
 .nbx-grp{padding:12px 14px}
 .nbx-grp+.nbx-grp{border-top:1px solid var(--line-2)}
 .nbx-lbl{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;
@@ -1252,7 +1255,15 @@ function navGroups(t){
   var head = t.tHead && t.tHead.rows.length ? t.tHead.rows[0] : t.rows[0];
   if (!head || head.cells.length < 20) return null;
   var titled = [].filter.call(head.cells, function(c){ return !cellEmpty(c); });
-  if (titled.length !== 1 || !titled[0].querySelector('a')) return null;
+  // An item in several keyword groups gets them merged into one table with a
+  // title per group - Adventuring_sander carries "Adventuring tool set" and
+  // "Sander", 89 columns wide. Requiring exactly one title left those
+  // rendering as tables, which is the widest thing on the page. Every title
+  // must still be a link, which is what separates these from a data table's
+  // header row.
+  if (!titled.length || titled.length > 4) return null;
+  var allLinked = titled.every(function(c){ return !!c.querySelector('a'); });
+  if (!allLinked) return null;
 
   var body = t.tBodies.length ? [].slice.call(t.tBodies[0].rows)
     : [].slice.call(t.rows).slice(1);
@@ -1266,7 +1277,7 @@ function navGroups(t){
   });
   if (dashes < 6 || dashes / total < 0.03) return null;
 
-  return { title: titled[0], rows: body };
+  return { titles: titled, rows: body };
 }
 
 /* Rebuild a keyword navbox as a labelled <nav> of link lists: one group per
@@ -1282,14 +1293,16 @@ function navboxify(t){
   var info = navGroups(t);
   if (!info) return null;
 
-  var titleLink = info.title.querySelector('a');
+  var names = [].map.call(info.titles, function(c){ return c.textContent.trim(); })
+                 .filter(function(s){ return !!s; });
   var box = document.createElement('nav');
   box.className = 'nbx';
   box.setAttribute('aria-label',
-    (titleLink.textContent.trim() || 'Related') + ' navigation');
+    (names.join(' and ') || 'Related') + ' navigation');
   var hd = document.createElement('div');
   hd.className = 'nbx-hd';
-  hd.innerHTML = info.title.innerHTML;
+  hd.innerHTML = [].map.call(info.titles, function(c){ return c.innerHTML; })
+    .join('<span class="nbx-sep">·</span>');
   box.appendChild(hd);
 
   info.rows.forEach(function(tr){
