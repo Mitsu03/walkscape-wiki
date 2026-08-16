@@ -341,6 +341,39 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 }
 @media (max-width:759px){ .ibx{max-width:420px} }
 
+/* ============ navbox (keyword-group link strips) ============ */
+/* MediaWiki navboxes ("Related Items") arrive as one table row per category,
+   items spread across dozens of mostly-empty columns with literal "---" cells
+   as spacers. That shape is hostile to <table>: it is not rows and columns, it
+   is a labelled set of link lists. navboxify() recognises it in enhance() and
+   this styles the rebuilt result. */
+.nbx{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);
+  overflow:hidden;margin:1.3em 0;box-shadow:var(--shadow)}
+.nbx-hd{display:flex;align-items:center;gap:8px;padding:11px 14px;
+  font-family:var(--display);font-weight:600;font-size:1.02rem;
+  border-bottom:1px solid var(--line-2);background:var(--panel-2)}
+.nbx-hd img{height:1.4em;width:auto}
+.nbx-hd a{color:inherit}
+.nbx-grp{padding:12px 14px}
+.nbx-grp+.nbx-grp{border-top:1px solid var(--line-2)}
+.nbx-lbl{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 9px}
+.nbx-list{list-style:none;display:flex;flex-wrap:wrap;gap:7px;margin:0;padding:0}
+.nbx-item{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;
+  border:1px solid var(--line);border-radius:var(--r);background:var(--panel-2);
+  color:var(--ink);font-size:.83rem;line-height:1.2;min-height:32px}
+.nbx-item:hover{border-color:var(--accent);background:var(--panel);
+  text-decoration:none}
+.nbx-item img{width:18px;height:18px;flex:none;object-fit:contain}
+.nbx-badge{display:inline-flex;align-items:center;gap:3px;font-family:var(--mono);
+  font-size:.68rem;color:var(--ink-2);background:var(--panel);
+  border:1px solid var(--line-2);border-radius:999px;padding:1px 6px 1px 3px;
+  flex:none}
+.nbx-badge img{width:13px;height:13px}
+@media (max-width:480px){
+  .nbx-item{font-size:.8rem;padding:5px 9px 5px 5px}
+}
+
 /* ============ rail / TOC ============ */
 .rlabel{font-family:var(--mono);font-size:.66rem;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3);margin:0 0 10px}
@@ -1203,6 +1236,119 @@ function infobox(t){
   return box;
 }
 
+var navUid = 0;
+/* Detect a MediaWiki "keyword navbox": one row per category (Crafted, Loot,
+   ...), items spread across dozens of columns with literal "---" spacer cells.
+   Absorbing_amulet's arrives as 3 rows x 136 columns - stripEmptyCols honestly
+   reduces it to 48, because those columns really do hold content, and the
+   article then widened to fit a strip 48 items across.
+
+   Conservative on purpose: a linked single-cell title row, a shallow body, a
+   wide raw column count AND real "---" padding. Destroying a genuine data
+   table is far worse than missing a navbox, and a data table cannot carry all
+   four of those at once. infobox() has already claimed key/value tables by the
+   time this runs. */
+function navGroups(t){
+  var head = t.tHead && t.tHead.rows.length ? t.tHead.rows[0] : t.rows[0];
+  if (!head || head.cells.length < 20) return null;
+  var titled = [].filter.call(head.cells, function(c){ return !cellEmpty(c); });
+  if (titled.length !== 1 || !titled[0].querySelector('a')) return null;
+
+  var body = t.tBodies.length ? [].slice.call(t.tBodies[0].rows)
+    : [].slice.call(t.rows).slice(1);
+  if (!body.length || body.length > 8) return null;
+
+  var dashes = 0, total = 0;
+  body.forEach(function(tr){
+    [].forEach.call(tr.cells, function(c){
+      total++; if (c.textContent.trim() === '---') dashes++;
+    });
+  });
+  if (dashes < 6 || dashes / total < 0.03) return null;
+
+  return { title: titled[0], rows: body };
+}
+
+/* Rebuild a keyword navbox as a labelled <nav> of link lists: one group per
+   category row, one chip per item. A level or rarity marker that precedes an
+   item is carried as a small badge and stays attached to every FOLLOWING item
+   until a new marker replaces it - some categories share one marker across
+   several items, so pairing each badge with just the next item drops it from
+   the rest of the cluster.
+
+   Read-only probe like infobox(): never mutates t, so returning null leaves it
+   untouched for the normal table pipeline. */
+function navboxify(t){
+  var info = navGroups(t);
+  if (!info) return null;
+
+  var titleLink = info.title.querySelector('a');
+  var box = document.createElement('nav');
+  box.className = 'nbx';
+  box.setAttribute('aria-label',
+    (titleLink.textContent.trim() || 'Related') + ' navigation');
+  var hd = document.createElement('div');
+  hd.className = 'nbx-hd';
+  hd.innerHTML = info.title.innerHTML;
+  box.appendChild(hd);
+
+  info.rows.forEach(function(tr){
+    var cells = [].slice.call(tr.cells);
+    var label = (cells.shift() || {}).textContent;
+    label = label ? label.trim() : '';
+    if (!label) return;
+
+    var badge = '', items = '', any = false;
+    cells.forEach(function(c){
+      var img = c.querySelector('img'), txt = c.textContent.trim();
+      if (txt === '---') return;
+      if (!txt && !img) return;
+      var a = c.querySelector('a'), linkText = a ? a.textContent.trim() : '';
+      if (!linkText){
+        // icon-only or icon+number marker (level, rarity) - sticks to whatever
+        // items follow, until the next marker replaces it
+        var lbl = txt || (img && img.alt) || '';
+        badge = '<span class="nbx-badge"' +
+          (lbl ? ' title="' + attr(lbl) + '"' : '') + '>' +
+          (img ? '<img src="' + attr(img.src) + '" alt="' + attr(img.alt || '') +
+                 '" class="' + attr(img.className) + '">' : '') +
+          (txt ? esc(txt) : '') + '</span>';
+        return;
+      }
+      // alt="" on the item's own icon: the visible name beside it already says
+      // the same thing, and a real alt would announce it twice. The badge icon
+      // keeps its alt - for rarity markers it is the only signal there is.
+      var iconHTML = img ? '<img src="' + attr(img.src) + '" alt="" class="' +
+        attr(img.className) + '">' : '';
+      items += '<li><a class="nbx-item" href="' +
+        attr(a.getAttribute('href') || '#') + '">' +
+        badge + iconHTML + '<span>' + esc(linkText) + '</span></a></li>';
+      any = true;
+    });
+    if (!any) return;
+
+    var gid = 'nbx-' + (navUid++);
+    var grp = document.createElement('div');
+    grp.className = 'nbx-grp';
+    // a div + aria-labelledby rather than a real heading: enhance() turns every
+    // h2/h3 into an anchored TOC entry, so headings here would put "Crafted"
+    // and "Loot" into the table of contents of every item page.
+    grp.innerHTML = '<div class="nbx-lbl" id="' + gid + '">' + esc(label) +
+      '</div><ul class="nbx-list" aria-labelledby="' + gid + '">' + items +
+      '</ul>';
+    box.appendChild(grp);
+  });
+
+  if (box.children.length < 2) return null;   // header only, nothing usable
+
+  // assembled after the page-wide external-link pass already ran, so these
+  // need the same target/rel treatment by hand
+  [].forEach.call(box.querySelectorAll('a[href^="http"]'), function(a){
+    a.target = '_blank'; a.rel = 'noopener';
+  });
+  return box;
+}
+
 /* Recognise a recipe table (a "recipe ... outputs" header) and locate its
    output and level columns; returns null for anything that isn't one. */
 function recipeCols(t){
@@ -1358,6 +1504,11 @@ function enhance(root){
     // columns. Detect those and render a clean card instead of a sparse grid.
     var card = infobox(t);
     if (card){ t.replaceWith(card); return; }
+
+    // Keyword navboxes are link lists wearing a table costume; rebuilt as a
+    // <nav> they also stop feeding fitWide() a 48-column width to grow into.
+    var nbx = navboxify(t);
+    if (nbx){ t.replaceWith(nbx); return; }
 
     // For real data tables: realign icon columns, then drop dead columns.
     foldIconColumn(t);
