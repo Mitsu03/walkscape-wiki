@@ -185,12 +185,12 @@ a.nrow:hover{text-decoration:none}
    a wide monitor looks like a broken layout rather than a margin. */
 .wrap{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);gap:36px;
   padding:26px 30px 100px;max-width:1240px;width:100%;margin-inline:auto}
-/* Fill the window. .solo is the category/index layout, whose .col is
-   unconstrained, so width turns into more cards per row; .wideg is set by
-   enhance() when a table actually overflowed. Both scale with the viewport
-   rather than to a breakpoint. */
+/* .solo is the category/index layout: its .col is unconstrained and the card
+   grid is auto-fill, so every extra pixel becomes another card. Filling the
+   window is the right answer there, at any resolution.
+   Articles are different - see fitWide() in the JS, which sets an explicit
+   max-width sized to the widest table rather than letting it fill. */
 .wrap.solo{grid-template-columns:minmax(0,1fr);max-width:none}
-.wrap.wideg{max-width:none}
 .col{min-width:0;max-width:calc(var(--measure) + 4ch)}
 /* pages with wide data tables let the article track fill; prose stays capped
    by .body>* below, so only the tables get the extra room */
@@ -1460,13 +1460,29 @@ function enhance(root){
       if (!col.isConnected){ removeEventListener('resize', fitWide); return; }
       // measure narrow, then decide
       col.classList.remove('wide');
-      if (wrap) wrap.classList.remove('wideg');
-      var wide = [].some.call(root.querySelectorAll('.tscroll'), function(sc){
-        return sc.scrollWidth - sc.clientWidth > 8;
+      if (wrap) wrap.style.maxWidth = '';
+      var avail = col.clientWidth, need = 0;
+      [].forEach.call(root.querySelectorAll('.tscroll'), function(sc){
+        if (sc.scrollWidth > need) need = sc.scrollWidth;
       });
+      var wide = need - avail > 8;
       col.classList.toggle('wide', wide);
-      // the wrap has its own cap; lift it too, or the column cannot grow
-      if (wrap) wrap.classList.toggle('wideg', wide);
+      // Grow to exactly what the widest table needs, never further. Letting the
+      // widened layout fill the window instead made a 5-column table span an
+      // ultrawide monitor, dwarfing the prose beside it. The viewport is the
+      // ceiling, not the target: width:100% on .wrap clamps this when the table
+      // needs more than there is, and the table scrolls as before.
+      if (wide && wrap){
+        var cs = getComputedStyle(wrap);
+        var extra = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+        var railEl = wrap.querySelector('.rail');
+        // the rail is display:none on narrow viewports, and then its gap is
+        // not in play either
+        if (railEl && railEl.offsetWidth){
+          extra += railEl.offsetWidth + (parseFloat(cs.columnGap) || 0);
+        }
+        wrap.style.maxWidth = Math.ceil(need + extra) + 'px';
+      }
     };
     fitWide();
     // Table icons are data-URI images with no intrinsic width in the markup, so
