@@ -185,7 +185,12 @@ a.nrow:hover{text-decoration:none}
    a wide monitor looks like a broken layout rather than a margin. */
 .wrap{display:grid;grid-template-columns:minmax(0,1fr) var(--rail);gap:36px;
   padding:26px 30px 100px;max-width:1240px;width:100%;margin-inline:auto}
-.wrap.solo{grid-template-columns:minmax(0,1fr);max-width:1000px}
+/* Fill the window. .solo is the category/index layout, whose .col is
+   unconstrained, so width turns into more cards per row; .wideg is set by
+   enhance() when a table actually overflowed. Both scale with the viewport
+   rather than to a breakpoint. */
+.wrap.solo{grid-template-columns:minmax(0,1fr);max-width:none}
+.wrap.wideg{max-width:none}
 .col{min-width:0;max-width:calc(var(--measure) + 4ch)}
 /* pages with wide data tables let the article track fill; prose stays capped
    by .body>* below, so only the tables get the extra room */
@@ -430,7 +435,7 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .empty .acts{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
 
 /* ============ home ============ */
-.home{padding:30px 30px 100px;max-width:1080px;width:100%;margin-inline:auto}
+.home{padding:30px 30px 100px;max-width:none;width:100%;margin-inline:auto}
 .hhead{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px}
 .hhead h1{font-size:1.9rem;margin:0;line-height:1.1}
 .hsub{color:var(--ink-2);margin:6px 0 22px;max-width:60ch}
@@ -524,20 +529,13 @@ mark{background:color-mix(in srgb,var(--amber) 34%,transparent);color:inherit;
    more cards per row. Article prose is deliberately NOT widened - it stays at
    --measure (70ch), because a 1700px line of body text is unreadable. On an
    article the spare width is margin, and now symmetric margin. */
-@media (min-width:1500px){
-  .wrap.solo{max-width:1320px}
-  .home{max-width:1320px}
-  /* .wideg is set by enhance() only when a table overflowed. Plain articles
-     keep the 1240px cap on purpose: widening the grid there would not widen the
-     prose (it is capped at --measure), it would just tear a gap between the
-     text and the TOC rail. */
-  .wrap.wideg{max-width:1560px}
-}
-@media (min-width:1920px){
-  .wrap.solo{max-width:1560px}
-  .home{max-width:1500px}
-  .wrap.wideg{max-width:1840px}
-}
+/* No width breakpoints. Layouts whose column is unconstrained - category pages,
+   the home page, and articles that enhance() widened because a table overflowed
+   - simply take the width they are given, at any resolution. Stepped caps were
+   wrong twice over: they did nothing between the steps, and nothing at all
+   above the last one, so a 2560 or an ultrawide got the same 1840px as a 1920.
+   The cap that remains is on prose (--measure), which is a readability limit and
+   does not belong to the viewport. */
 @media (max-width:1180px){
   .wrap{grid-template-columns:minmax(0,1fr);gap:0}
   .rail{display:none}
