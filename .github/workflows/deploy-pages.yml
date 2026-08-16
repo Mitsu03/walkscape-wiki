@@ -1,0 +1,91 @@
+name: Deploy to Pages
+
+# Renders index.html from the committed data and publishes it as a Pages
+# artifact. The generated file is no longer committed: it is ~22 MB and was
+# rewritten in full on every content refresh, so keeping it in the tree added
+# roughly a gigabyte of history a year for a single-file site. The data it is
+# built from is committed, build_site.py is deterministic and stdlib-only, so
+# the artifact is reproducible from any commit without storing it.
+#
+# Nothing here fetches the wiki. Content changes arrive through
+# refresh-content.yml, which opens a pull request against data/; merging that
+# PR is what triggers this workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only what the render actually reads. Documentation and the fetch
+      # scripts do not change the output, so they do not need a deploy.
+      - "data/**"
+      - "build_site.py"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; let a newer commit supersede an in-flight one,
+# since only the latest build is ever wanted.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # build_site.py is stdlib-only by design, so there is nothing to install.
+      - name: Render the site
+        run: |
+          set -euo pipefail
+          python build_site.py
+          test -s index.html
+          mkdir -p _site
+          mv index.html _site/index.html
+          echo "size: $(du -h _site/index.html | cut -f1)"
+
+      # A truncated or half-written payload still renders as a valid HTML file,
+      # so check the app's own data actually made it in rather than trusting
+      # that the build exited 0.
+      - name: Sanity-check the rendered page
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, re, sys
+          html = open("_site/index.html", encoding="utf-8").read()
+          m = re.search(r'<script[^>]*>\s*(\{.*?\})\s*</script>', html, re.S)
+          if not m:
+              sys.exit("no data payload found in the rendered page")
+          data = json.loads(m.group(1))
+          pages = len(data.get("pages", {}))
+          if pages < 100:
+              sys.exit(f"only {pages} pages in the payload; refusing to deploy")
+          print(f"payload ok: {pages} pages, {len(data.get('images', {}))} images")
+          PY
+
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
