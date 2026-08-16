@@ -5,7 +5,7 @@ Guidance for Claude Code (claude.ai/code) when working in this repository.
 ## What this is
 
 A static, single-file companion wiki for [WalkScape](https://walkscape.app), built by
-crawling the official community wiki, reclassifying it into a phone-friendly information
+fetching the official community wiki, reclassifying it into a phone-friendly information
 architecture, and rendering everything — markup, CSS, JS, page content and images — into one
 self-contained `index.html`. No server, no runtime dependencies, no network at view time.
 
@@ -16,23 +16,37 @@ via GitHub Pages, straight off the default branch. There is no CI: **committing 
 ## The build pipeline
 
 ```
-firecrawl crawl                -> .firecrawl/*.md          (gitignored scratch cache)
-python build_urls.py           -> data/master_urls.txt      (curated crawl target list)
-bash   scrape_missing.sh       -> .firecrawl/*.md           (fills gaps, throttled)
+python fetch_pages.py          -> .firecrawl/*.md          (gitignored scratch cache)
+python build_urls.py           -> data/master_urls.txt      (link discovery)
 python build_data.py           -> data/wiki_data.json + data/img_map.json
-python build_images.py         -> data/images.json          (compressed data-URIs)
+python build_images.py         -> data/images.json + data/img_meta.json
 python build_site.py           -> index.html                (the deliverable)
 ```
 
 Typical loop when only the *interface* changes:
 
 ```bash
-python3 build_site.py     # stdlib only — works from committed data, ~10.5 MB / 259 pages
+python build_site.py      # stdlib only — works from committed data, ~16.9 MB / 686 pages
 ```
 
-Only re-crawl when the game content itself has changed. `build_data.py` prints its
-classification counts per section — read that output to sanity-check the buckets after a
-re-crawl.
+Only re-fetch when the game content itself has changed. `build_data.py` prints its
+classification counts per section, then every page it *discarded* grouped by reason — read
+both after a re-fetch. Anything dropped for a reason other than `language variant` wants a
+look.
+
+### Content comes from the wiki's own API — there is no crawler
+
+`fetch_pages.py` reads MediaWiki's public `action=parse` endpoint directly. No API key, no
+crawler service, no per-page cost, and no browser: the wiki is server-rendered, so nothing
+here needs JavaScript. Re-fetching the whole 690-page manifest is free and takes ~12 min at
+the default 0.5 s politeness pause.
+
+Do not reintroduce a scraping service. This project used one, and it cost money to
+reproduce content the source hands out for free — and worse, its output needed a whole
+layer of chrome-stripping that the API makes unnecessary.
+
+`fetch_pages.py --refresh` re-fetches pages already cached; without it, only missing pages
+are fetched. `--list` shows the work list, `--limit N` caps it.
 
 ### Dependencies
 
@@ -41,30 +55,36 @@ re-crawl.
 | `build_site.py` | stdlib only (`json`, `os`) |
 | `build_urls.py` | stdlib only |
 | `build_data.py` | `markdown` |
-| `build_images.py` | `requests`, `Pillow` |
-| crawling | the `firecrawl` CLI |
+| `build_images.py` | `Pillow` |
+| `fetch_pages.py` | `markdownify`, `beautifulsoup4` |
 
-There is no `requirements.txt`, no virtualenv, no lockfile. Install what you need ad hoc.
-A fresh container generally has `requests` but **not** `markdown` or `Pillow`, and the
-`.firecrawl/` cache is gitignored — so out of the box only `build_site.py` can run. That is
-enough for any UI work, since `data/wiki_data.json` and `data/images.json` are committed.
+`pip install -r requirements.txt` covers all of it. The `.firecrawl/` cache is gitignored,
+so out of the box only `build_site.py` can run — which is enough for any UI work, since
+`data/wiki_data.json` and `data/images.json` are committed.
+
+**`fetch_pages.py` gotcha:** markdownify drops an `<img>` in an inline context and emits
+only its alt text. Nearly every wiki image is wrapped in an `<a>` file link — including the
+infobox portrait that becomes each page's icon — so `keep_inline_images_in` is load-bearing,
+not a nicety. Removing it silently strips the art from the entire item catalogue.
 
 ## Layout
 
 ```
 index.html          GENERATED — do not hand-edit
-build_data.py       crawl cache -> cleaned, classified page data
+fetch_pages.py      MediaWiki API -> .firecrawl/*.md page cache
+build_data.py       page cache -> cleaned, classified page data
 build_images.py     referenced images -> compressed data-URIs
 build_site.py       data -> index.html; the ENTIRE UI lives in here
-build_urls.py       sitemap + link scrape -> curated URL list
-scrape_missing.sh   re-scrape only pages missing from the cache, 8 at a time, 12 s apart
+build_urls.py       sitemap + link scrape -> discovered URL list
 data/
-  wiki_data.json    the page payload (~4.4 MB)
-  images.json       image data-URIs (~6.2 MB)
+  wiki_data.json    the page payload (~14 MB)
+  images.json       image data-URIs (~2.5 MB)
+  img_meta.json     which ids are pixel art, and which share another's bytes
   img_map.json      image id -> source URL
-  master_urls.txt   curated crawl targets
+  master_urls.txt   discovered fetch targets (~690)
   urls.txt          sitemap seed
   home.md           the home page, kept apart (its title contains ':')
+.github/            weekly refresh workflow; opens a PR, never pushes to main
 ```
 
 ## Rules that matter
@@ -145,5 +165,6 @@ content remains © the WalkScape team and wiki contributors. This is an unoffici
 companion tool. Every page keeps a `url` field pointing back at its source, and articles that
 were truncated by `HTML_CAP` link out to the original — preserve that attribution path.
 
-Be considerate when re-crawling: `scrape_missing.sh` deliberately batches 8 URLs and sleeps
-12 s between batches. Do not remove that throttle.
+Be considerate when re-fetching: `fetch_pages.py` sleeps `--pause` seconds (default 0.5)
+between requests and identifies itself in the User-Agent. Fetching is free now, which makes
+politeness the *only* limit — do not remove that throttle or parallelise the fetch.
