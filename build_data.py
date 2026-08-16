@@ -31,14 +31,17 @@ def slug_to_title(slug):
     if slug == "Home":
         return "Welcome to WalkScape"
     t = urllib.parse.unquote(slug).replace("_", " ")
-    if t.startswith("Guide:"):
-        t = t[6:]
     if t.startswith("Walkscape Walkthrough:"):
         t = t[22:]
-    # "Gear:Traveling/Jarvonia" is a gear-set guide filed under a namespace and
-    # a subpage. Neither is meaningful to a reader: show "Traveling - Jarvonia".
-    if t.startswith("Gear:"):
-        t = t[5:].replace("/", " - ")
+    # The Guide: and Gear: namespaces shadow real pages - there is a Gear:Agility
+    # gear set, a Guide:Agility walkthrough AND the Agility skill. Dropping the
+    # namespace outright made all three read as plain "Agility", which is
+    # indistinguishable in search results and category lists. Keep the plain
+    # name up front, where it sorts and matches, and qualify it instead.
+    if t.startswith("Guide:"):
+        t = t[6:].replace("/", " - ") + " (guide)"
+    elif t.startswith("Gear:"):
+        t = t[5:].replace("/", " - ") + " (gear set)"
     # "Versions/512" is a patch-notes subpage; name it as one.
     if t.startswith("Versions/"):
         t = "Version " + t[len("Versions/"):]
@@ -307,6 +310,14 @@ SKILL_GROUPS = {
 }
 SKILL_PAGES = set().union(*SKILL_GROUPS.values())
 
+# Venues where a skill is practised ("Use blazing forges to smelt ores..."). The
+# wiki tags them with the skill's category, which used to file them as skills;
+# they are places, and belong with the other buildings.
+FACILITY_PAGES = {
+    "Forges", "Kitchens", "Sawmills", "Workshops", "Tanneries",
+    "Erdwiss_Trinketry_Factory",
+}
+
 # Attribute triples: <Name>, <Name>_(Mechanics, <Name>_Items all describe one
 # character attribute. The bare page is the system, the _Items page is an index.
 ATTRIBUTES = {
@@ -325,8 +336,18 @@ _FAM_RE = re.compile(r"(_\(Mechanics\)?|_Attribute_Items|_Items)$")
 
 
 def family_key(slug):
-    """Collapse 'X', 'X_(Mechanics)' and 'X_Attribute_Items' onto 'X'."""
-    return _FAM_RE.sub("", urllib.parse.unquote(slug))
+    """Collapse a page onto the subject it is about.
+
+    'X', 'X_(Mechanics)' and 'X_Attribute_Items' are one attribute; and a
+    'Gear:X/Variant' set or a 'Guide:X' walkthrough is about X too, so it can
+    borrow X's artwork instead of rendering as a bare glyph.
+    """
+    s = urllib.parse.unquote(slug)
+    for pre in ("Gear:", "Guide:"):
+        if s.startswith(pre):
+            s = s[len(pre):].split("/", 1)[0]
+            break
+    return _FAM_RE.sub("", s)
 # Core rules and progression pages.
 SYS_PAGES = {
     "Attributes", "Character_Level", "Skill_Experience", "Skill_Level",
@@ -480,6 +501,21 @@ def classify(slug, title, cats):
     if "Faction Reputation" in cat_set:
         return SYS, "Rewards", tags
 
+    # -- Chest loot tables ----------------------------------------------
+    # "<Skill>_Chests" pages list what a chest drops. They were landing in five
+    # different buckets on the strength of whatever their loot happened to be -
+    # Carpentry_Chests was filed as Food - so pin them next to "Chests" itself.
+    if slug.endswith("_Chests"):
+        return SYS, "Rewards", tags
+
+    # -- Crafting venues are places, not skills -------------------------
+    if slug in FACILITY_PAGES:
+        return LOCS, "Buildings", tags
+
+    # -- "<Name>_Gear_Set" is a curated kit list, i.e. an index ---------
+    if slug.endswith("_Gear_Set"):
+        return ITEMS, "Index", tags
+
     # -- Glossary: keyword pages describe a term, not an item ----------
     if slug.endswith("_Keyword") or title.endswith("Keyword") \
             or slug in ("Keywords", "Glossary"):
@@ -500,12 +536,16 @@ def classify(slug, title, cats):
         return SYS, "Attributes", tags
 
     # -- Skills --------------------------------------------------------
+    # SKILL_GROUPS is the complete list of trainable skills, so membership is
+    # the whole test. There used to be a `has("skills")` fallback here, but the
+    # wiki tags anything skill-adjacent with that category, so it swept in the
+    # crafting facilities (Forges, Kitchens, Sawmills, Workshops) and filed them
+    # as skills. Pages merely *about* skills fall through to the rules below,
+    # which classify them on what they actually are.
     if slug in SKILL_PAGES:
         for group, members in SKILL_GROUPS.items():
             if slug in members:
                 return SKILLS, group, tags
-    if has("skills") and slug not in INDEX_PAGES:
-        return SKILLS, "Support", tags
 
     # -- Game systems --------------------------------------------------
     if slug in SYS_PAGES:

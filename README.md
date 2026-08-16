@@ -71,16 +71,16 @@ pages, so a second `fetch_pages.py` run picks up anything newly linked.
 
 ```
   Start Here: 38  (Getting started 6, About the wiki 1, Release notes 31)
-  Skills: 23  (Gathering 6, Artisan 7, Support 10)
-  Items & Equipment: 367  (Tools 96, Gear 101, Materials 67, ...)
+  Skills: 15  (Gathering 6, Artisan 7, Support 2)
+  Items & Equipment: 357  (Tools 96, Gear 101, Materials 59, ...)
 ```
 
-Use that output to sanity-check the buckets after a re-crawl.
+Use that output to sanity-check the buckets after a re-fetch.
 
 It then reports what it *discarded*, grouped by reason:
 
 ```
-Cached files: 687 | built: 686 | dropped: 1
+Cached files: 686 | built: 685 | dropped: 1
   language variant: 1
 ```
 
@@ -129,6 +129,16 @@ Notable calls:
   ports and harbours as plain locations, so every settlement lands in `Areas`. The rule is
   kept for when the wiki starts distinguishing them.
 - `*_Keyword` pages describe a term, not an item, so they live in the Glossary.
+- `<Skill>_Chests` pages list what a chest drops, so they sit with `Chests` under Rewards.
+  Classified on their own shape, because judging them by their loot scattered them across
+  five sections — `Carpentry_Chests` was filed as **Food**.
+- Crafting venues (Forges, Kitchens, Sawmills, Workshops…) carry their skill's wiki category,
+  which used to file them as skills. They are places, so they sit with the other buildings.
+- Only the pages in `SKILL_GROUPS` are skills. The wiki tags anything skill-adjacent with the
+  `Skills` category, so there is deliberately **no** category-based fallback into Skills.
+- `Gear:` and `Guide:` pages keep a qualifier — "Agility (gear set)", "Agility (guide)" —
+  because a bare "Agility" collides with the Agility skill and reads identically in search.
+  They borrow their subject's icon, since neither namespace has artwork of its own.
 - Index pages (`Skills`, `Items`, `Materials`…) are preserved but tagged `Index` and sorted
   last, so real content wins.
 - Wiki bookkeeping categories ("Pages That Automatically Update", stubs, translations) are
