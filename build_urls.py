@@ -60,7 +60,15 @@ if os.path.exists("data/urls.txt"):
 # here silently truncated them to "Work_Efficiency_(Mechanics" - which crawls
 # as a non-existent page. trim_parens() below drops only the unbalanced ")"
 # that closes the surrounding markdown link.
-link_re = re.compile(r"https://wiki\.walkscape\.app/wiki/([^\s\"'\]#|]+)")
+#
+# The leading "](" is captured, not required: when it is present the URL is a
+# markdown link target and its bounds are exact, so trailing punctuation is
+# part of the title. Only a bare URL sitting in prose needs the "." or ","
+# that ended the sentence stripped off. Stripping unconditionally truncated
+# "Letter_from_A._A." to "Letter_from_A._A", which then 404s - the same silent
+# loss the ")" case above caused, from the same assumption that punctuation at
+# the end of a URL cannot belong to it.
+link_re = re.compile(r"(\]\()?https://wiki\.walkscape\.app/wiki/([^\s\"'\]#|]+)")
 
 
 def trim_parens(page):
@@ -82,8 +90,10 @@ def trim_parens(page):
 
 for f in glob.glob(os.path.join(cache, "*.md")):
     txt = open(f, encoding="utf-8", errors="ignore").read()
-    for m in link_re.findall(txt):
-        page = trim_parens(m).rstrip(".,")
+    for md_link, m in link_re.findall(txt):
+        page = trim_parens(m)
+        if not md_link:
+            page = page.rstrip(".,")
         add(urllib.parse.unquote(page))
 
 urls = sorted(urls)
