@@ -159,8 +159,11 @@ jobs:
           # dedupe alias map keyed by image id, so leaving it behind while
           # images.json is regenerated points aliases at ids that no longer
           # exist -- silently blank images rather than a failed build.
+          #
+          # index.html is deliberately absent: it is rendered by
+          # deploy-pages.yml from the data below, not stored. It is still built
+          # in this job so the guard rails can measure it.
           git add -- \
-            index.html \
             data/wiki_data.json \
             data/img_map.json \
             data/images.json \

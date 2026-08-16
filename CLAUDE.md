@@ -10,8 +10,13 @@ architecture, and rendering everything — markup, CSS, JS, page content and ima
 self-contained `index.html`. No server, no runtime dependencies, no network at view time.
 
 Published at [mitsu03.github.io/walkscape-wiki](https://mitsu03.github.io/walkscape-wiki/)
-via GitHub Pages, straight off the default branch. There is no CI: **committing a rebuilt
-`index.html` to `main` is the deploy.**
+via GitHub Pages. **`index.html` is not committed.** `.github/workflows/deploy-pages.yml`
+renders it from the committed `data/` on every push to `main` that touches `data/**` or
+`build_site.py`, and publishes it as a Pages artifact — so **merging a data change is the
+deploy**. Pages is configured with `build_type: workflow`; it no longer serves the branch.
+
+Locally, `python build_site.py` still writes `index.html` into the working tree, which is
+gitignored. Open it directly — that is unchanged and still the whole point.
 
 ## The build pipeline
 
@@ -89,7 +94,7 @@ not a nicety. Removing it silently strips the art from the entire item catalogue
 ## Layout
 
 ```
-index.html          GENERATED — do not hand-edit
+index.html          GENERATED, gitignored — rendered in CI at deploy time
 fetch_pages.py      MediaWiki API -> .firecrawl/*.md page cache
 build_data.py       page cache -> cleaned, classified page data
 build_images.py     referenced images -> compressed data-URIs
@@ -109,10 +114,10 @@ data/
 
 ## Rules that matter
 
-**`index.html` is a build artifact.** It is overwritten wholesale on every build and is
-committed only so GitHub Pages can serve it. Never edit it directly — change `build_site.py`
-and rebuild. A UI-change commit should touch `build_site.py` **and** `index.html` together,
-and their diffs will be near-identical line counts.
+**`index.html` is a build artifact and is not in the repository.** It is overwritten
+wholesale on every build and gitignored; CI renders it at deploy time. Never edit it
+directly — change `build_site.py` and rebuild. A UI-change commit therefore touches
+`build_site.py` alone, and the deploy workflow picks the change up on merge.
 
 **`build_site.py` is the source of truth for the interface.** Nearly all of its 1600+ lines
 are one raw string, `TEMPLATE`, holding the full document. The only Python logic around it:
@@ -170,8 +175,14 @@ JS; keep new code inside the matching banner.
 ## Verifying a change
 
 `python3 build_site.py` is deterministic: with the committed data unchanged it reproduces the
-existing `index.html` byte for byte, so `git status` staying clean is a valid check that you
-changed nothing. After a UI edit, rebuild and open `index.html` directly in a browser
+same `index.html` byte for byte. `git status` can no longer show that — the file is
+gitignored — so hash it across the change instead:
+
+```bash
+sha256sum index.html > /tmp/before && python build_site.py && sha256sum -c /tmp/before
+```
+
+After a UI edit, rebuild and open `index.html` directly in a browser
 (`file://` works — that is the whole design) and exercise: the command palette (`/` or
 `Ctrl`/`Cmd`+`K`), a category page's filters and layout toggle, an article's table of contents
 and tables, both themes, and a narrow viewport for the card view.

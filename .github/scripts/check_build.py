@@ -11,10 +11,10 @@ build_images.py / build_site.py have run. Two jobs:
    large for a human to notice. So the regenerated build must stay within a
    ratio of the committed one, and no section may empty out.
 
-2. A readable PR body. The diffs themselves are unreviewable (index.html is
-   ~10 MB of generated markup), so the value of the review is in the summary:
-   which pages appeared, which disappeared, which changed, and how the section
-   counts moved.
+2. A readable PR body. The diffs themselves are unreviewable (data/*.json is
+   ~23 MB of generated JSON on one line), so the value of the review is in the
+   summary: which pages appeared, which disappeared, which changed, and how the
+   section counts moved.
 
 Exit codes: 0 ok, 1 guard tripped.
 """
@@ -104,8 +104,8 @@ def main() -> int:
                     help="fail if embedded images drop below this fraction "
                          "(default: 0.70)")
     ap.add_argument("--min-site-ratio", type=float, default=0.80,
-                    help="fail if index.html shrinks below this fraction "
-                         "(default: 0.80)")
+                    help="fail if the committed data payload shrinks below "
+                         "this fraction (default: 0.80)")
     ap.add_argument("--pr-body", type=Path, default=None,
                     help="write the pull-request body here")
     args = ap.parse_args()
@@ -119,7 +119,14 @@ def main() -> int:
     old = load_json_blob(DATA)
     new_imgs = json.loads(IMAGES.read_text(encoding="utf-8"))
     old_imgs = load_json_blob(IMAGES)
-    old_site = git_show(SITE)
+    # index.html is not committed any more - Pages renders it from this data at
+    # deploy time - so there is no previous copy to measure the new one against.
+    # Guard the committed payload it is rendered from instead: that is what
+    # actually drives the page's size. Letting the old check quietly find
+    # nothing to compare would have removed a guard rail without removing the
+    # code, which is the worst way for one to disappear.
+    old_payload = sum(len(b) for b in (git_show(DATA), git_show(IMAGES)) if b)
+    new_payload = DATA.stat().st_size + IMAGES.stat().st_size
     site_bytes = SITE.stat().st_size
 
     new_pages: dict = new.get("pages", {})
@@ -163,14 +170,17 @@ def main() -> int:
         report.append(f"| embedded images | {len(old_imgs)} | {len(new_imgs)} | "
                       f"{len(new_imgs) - len(old_imgs):+d} |")
 
-    if old_site is not None:
-        if site_bytes < len(old_site) * args.min_site_ratio:
-            print(f"::error::index.html shrank from {len(old_site)} to "
-                  f"{site_bytes} bytes (below {args.min_site_ratio:.0%})")
+    if old_payload:
+        if new_payload < old_payload * args.min_site_ratio:
+            print(f"::error::the committed payload shrank from {old_payload} "
+                  f"to {new_payload} bytes (below {args.min_site_ratio:.0%})")
             failed = True
-        report.append(f"| index.html (MB) | {len(old_site)/1e6:.2f} | "
-                      f"{site_bytes/1e6:.2f} | "
-                      f"{(site_bytes - len(old_site))/1e6:+.2f} |")
+        report.append(f"| data payload (MB) | {old_payload/1e6:.2f} | "
+                      f"{new_payload/1e6:.2f} | "
+                      f"{(new_payload - old_payload)/1e6:+.2f} |")
+    # No before/after: the rendered page is not stored, so there is nothing to
+    # diff it against. Reported so the PR still shows what visitors download.
+    report.append(f"| rendered index.html (MB) | - | {site_bytes/1e6:.2f} | - |")
 
     # --- did anything actually change? -----------------------------------
     # Compared semantically, not byte-wise: an identical crawl must not open a
@@ -218,8 +228,9 @@ def main() -> int:
         lines.append("No page-level differences detected.")
         lines.append("")
 
-    lines.append("`index.html` and `data/*.json` are build artifacts; review "
-                 "the summary above rather than the file diffs.")
+    lines.append("`data/*.json` are build artifacts; review the summary above "
+                 "rather than the file diffs. `index.html` is not in the diff "
+                 "at all -- it is rendered from this data when Pages deploys.")
 
     body = "\n".join(lines)
     if args.pr_body:
