@@ -1,8 +1,10 @@
 name: Refresh wiki content
 
-# Re-fetches the official WalkScape wiki, rebuilds data/*.json + index.html, and
-# opens a pull request with the result. Nothing is ever pushed to main: content
-# drift is a judgement call, so a human reviews the summary in the PR body.
+# Re-fetches the official WalkScape wiki, rebuilds data/*.json and opens a pull
+# request with the result. Nothing is ever pushed to main: content drift is a
+# judgement call, so a human reviews the summary in the PR body. Merging that PR
+# is what deploys - deploy-pages.yml renders index.html from the data. The page
+# is still built here, but only so the guard rails can measure it.
 #
 # No secrets, no API key, no third-party service. The wiki is server-rendered
 # MediaWiki, so fetch_pages.py reads its public action=parse endpoint directly:
