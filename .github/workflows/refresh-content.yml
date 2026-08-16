@@ -1,19 +1,13 @@
 name: Refresh wiki content
 
-# Re-crawls the official WalkScape wiki, rebuilds data/*.json + index.html, and
+# Re-fetches the official WalkScape wiki, rebuilds data/*.json + index.html, and
 # opens a pull request with the result. Nothing is ever pushed to main: content
 # drift is a judgement call, so a human reviews the summary in the PR body.
 #
-# Requires one repository secret:
-#   FIRECRAWL_API_KEY  -- https://firecrawl.dev dashboard; the CLI also reads it
-#                         from this exact env var name, so it is never passed on
-#                         the command line.
-#
-# Cost: roughly one Firecrawl credit per wiki page per run, and the crawl
-# manifest (data/master_urls.txt plus the page set of the committed build) is
-# currently in the high hundreds. That is why this is weekly rather than nightly,
-# and why `max_urls` hard-stops the run if the manifest ever balloons.
-# See the docs in .github/scripts/crawl_refresh.py.
+# No secrets, no API key, no third-party service. The wiki is server-rendered
+# MediaWiki, so fetch_pages.py reads its public action=parse endpoint directly:
+# every run is free, which is why this can re-fetch the whole manifest rather
+# than rationing pages. The only cost is politeness, hence the request pause.
 
 on:
   schedule:
@@ -23,29 +17,17 @@ on:
   workflow_dispatch:
     inputs:
       full_refresh:
-        description: "Ignore the cached crawl: drop pages that fail to re-scrape instead of keeping the previous copy"
+        description: "Ignore the cached copy: drop pages that fail to re-fetch instead of keeping the previous copy"
         type: boolean
         default: false
       dry_run:
-        description: "Plan only - calls no Firecrawl API, spends no credits, opens no PR"
+        description: "Plan only - fetches nothing and opens no PR"
         type: boolean
         default: false
-      max_age_ms:
-        description: "Firecrawl --max-age in ms (0 = force a fully fresh fetch at full credit cost)"
+      pause:
+        description: "Seconds between wiki requests (politeness throttle)"
         type: string
-        default: "86400000"
-      batch_size:
-        description: "URLs per firecrawl invocation"
-        type: string
-        default: "8"
-      batch_delay:
-        description: "Seconds between batches"
-        type: string
-        default: "10"
-      max_urls:
-        description: "Abort if the crawl manifest exceeds this many pages (credit guard)"
-        type: string
-        default: "800"
+        default: "0.5"
 
 permissions:
   contents: write
@@ -58,13 +40,9 @@ concurrency:
 
 env:
   BRANCH: automation/content-refresh
-  FIRECRAWL_CLI_VERSION: "1.19.6"
   FULL_REFRESH: ${{ inputs.full_refresh || false }}
   DRY_RUN: ${{ inputs.dry_run || false }}
-  MAX_AGE_MS: ${{ inputs.max_age_ms || '86400000' }}
-  BATCH_SIZE: ${{ inputs.batch_size || '8' }}
-  BATCH_DELAY: ${{ inputs.batch_delay || '10' }}
-  MAX_URLS: ${{ inputs.max_urls || '800' }}
+  PAUSE: ${{ inputs.pause || '0.5' }}
 
 jobs:
   refresh:
@@ -90,30 +68,23 @@ jobs:
       - name: Install Python dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install the Firecrawl CLI
-        run: npm install --global "firecrawl@${FIRECRAWL_CLI_VERSION}"
-
-      # .firecrawl/ is gitignored, so CI never inherits the local crawl cache.
+      # .firecrawl/ is gitignored, so CI never inherits the local page cache.
       # This restores the previous run's copy as a floor: every page is still
-      # re-scraped, but a page whose fresh scrape fails falls back to the last
+      # re-fetched, but fetch_pages.py only overwrites a file once the new copy
+      # has arrived intact, so a page that fails falls back to the last
       # known-good markdown instead of vanishing from the site.
       # GitHub evicts caches untouched for 7 days and this job runs every 7, so
       # a miss now and then is expected -- it costs resilience, never content:
       # the durable manifest lives in the committed data/, not in this cache.
-      - name: Restore the crawl cache
-        id: crawl-cache
+      - name: Restore the page cache
+        id: page-cache
         if: env.FULL_REFRESH != 'true'
         uses: actions/cache/restore@v4
         with:
           path: .firecrawl
-          key: firecrawl-md-${{ github.run_id }}
+          key: wiki-md-${{ github.run_id }}
           restore-keys: |
-            firecrawl-md-
+            wiki-md-
 
       # data/img_cache/ is gitignored too. ~2000 image downloads, no API cost,
       # but slow and needlessly rude to the wiki's host to repeat every week.
@@ -125,33 +96,20 @@ jobs:
           restore-keys: |
             img-cache-
 
-      - name: Check Firecrawl auth and credits
-        if: env.DRY_RUN != 'true'
-        env:
-          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
+      - name: Refresh the page cache
         run: |
           set -euo pipefail
-          if [ -z "${FIRECRAWL_API_KEY}" ]; then
-            echo "::error::the FIRECRAWL_API_KEY repository secret is not set"
-            exit 1
+          if [ "${DRY_RUN}" = "true" ]; then
+            python fetch_pages.py --list
+            exit 0
           fi
-          firecrawl --status || echo "::warning::could not read Firecrawl status"
-
-      - name: Refresh the crawl cache
-        env:
-          FIRECRAWL_API_KEY: ${{ secrets.FIRECRAWL_API_KEY }}
-        run: |
-          set -euo pipefail
-          args=(
-            --batch-size "${BATCH_SIZE}"
-            --batch-delay "${BATCH_DELAY}"
-            --max-age "${MAX_AGE_MS}"
-            --max-urls "${MAX_URLS}"
-            --discovery-rounds 2
-          )
-          if [ "${FULL_REFRESH}" = "true" ]; then args+=(--full-refresh); fi
-          if [ "${DRY_RUN}" = "true" ]; then args+=(--dry-run); fi
-          python .github/scripts/crawl_refresh.py "${args[@]}"
+          # Round 1: re-fetch every page in the manifest, so existing pages
+          # pick up wiki edits rather than staying frozen at the cached copy.
+          python fetch_pages.py --refresh --pause "${PAUSE}"
+          # Re-run link discovery over the fresh markdown, then round 2 picks
+          # up pages that only became reachable because of those edits.
+          python build_urls.py
+          python fetch_pages.py --pause "${PAUSE}"
 
       - name: Build data
         if: env.DRY_RUN != 'true'
@@ -174,12 +132,12 @@ jobs:
 
       # Saved only on success, so the restored floor is always a build that
       # actually passed the guard rails.
-      - name: Save the crawl cache
+      - name: Save the page cache
         if: success() && env.DRY_RUN != 'true'
         uses: actions/cache/save@v4
         with:
           path: .firecrawl
-          key: firecrawl-md-${{ github.run_id }}
+          key: wiki-md-${{ github.run_id }}
 
       - name: Save the image cache
         if: always() && env.DRY_RUN != 'true'

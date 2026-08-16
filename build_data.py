@@ -35,6 +35,13 @@ def slug_to_title(slug):
         t = t[6:]
     if t.startswith("Walkscape Walkthrough:"):
         t = t[22:]
+    # "Gear:Traveling/Jarvonia" is a gear-set guide filed under a namespace and
+    # a subpage. Neither is meaningful to a reader: show "Traveling - Jarvonia".
+    if t.startswith("Gear:"):
+        t = t[5:].replace("/", " - ")
+    # "Versions/512" is a patch-notes subpage; name it as one.
+    if t.startswith("Versions/"):
+        t = "Version " + t[len("Versions/"):]
     return t
 
 # --- cleaning ----------------------------------------------------------
@@ -205,6 +212,24 @@ def _img_repl(m):
     # and lazy loading collapses viewBox-only SVG icons to 0 width in tables.
     return '<img data-i="%s" alt="%s">' % (img_id(url), alt)
 
+# Every wiki image arrives wrapped in a link to its File: description page.
+# Offline, that link goes nowhere useful - and the wrappers were 31% of all
+# page HTML (4.9 MB across the corpus), so the picture stays and the link goes.
+_FILE_WRAP_RE = re.compile(
+    r'<a href="https://wiki\.walkscape\.app/wiki/File:[^"]*"[^>]*>'
+    r'(<img[^>]*>)</a>')
+
+_DUP_TITLE_RE = re.compile(r'<a ([^>]*?) ?title="([^"]*)"([^>]*)>([^<]*)</a>')
+
+
+def _drop_dup_title(m):
+    before, title, after, text = m.groups()
+    if title.strip() != text.strip():
+        return m.group(0)
+    attrs = (before + after).strip()
+    return "<a %s>%s</a>" % (attrs, text)
+
+
 def rewrite_html(html_str, have_slugs):
     # keep wiki images as resolvable refs (embedded later as data URIs)
     html_str = re.sub(r"<img[^>]*>", _img_repl, html_str)
@@ -231,14 +256,21 @@ def rewrite_html(html_str, have_slugs):
                 # which the router then decodes to "%27" and fails to find.
                 return 'href="#/' + urllib.parse.quote(dec) + '"'
             # namespaced/meta or missing -> external
-            return ('href="https://wiki.walkscape.app/wiki/' + page +
-                    '" target="_blank" rel="noopener"')
+            # target/rel are applied at render time instead of being repeated
+            # here - 59k copies of them cost 1.8 MB.
+            return 'href="https://wiki.walkscape.app/wiki/' + page + '"'
         # index.php / other links -> external new tab
         if href.startswith("http"):
-            return 'href="' + href + '" target="_blank" rel="noopener"'
+            return 'href="' + href + '"'
         return m.group(0)
 
     html_str = re.sub(r'href="([^"]+)"', repl, html_str)
+    # unwrap images from their File: description links (see _FILE_WRAP_RE)
+    html_str = _FILE_WRAP_RE.sub(r"\1", html_str)
+    # MediaWiki gives every link a title that usually just repeats the link
+    # text; as a tooltip that is noise, and it costs ~0.6 MB. Titles that say
+    # something the text does not are kept.
+    html_str = _DUP_TITLE_RE.sub(_drop_dup_title, html_str)
     # also clean the language-redirect prefix out of title tooltips
     html_str = html_str.replace("Special:MyLanguage/", "").replace(
         "Special:MyLanguage:", "")
@@ -399,6 +431,33 @@ def classify(slug, title, cats):
             or slug in GUIDE_PAGES:
         return GUIDES, "Walkthroughs", tags
 
+    # These run before the item rules on purpose. They identify a page by what
+    # the wiki filed it as, and the item rules below match on much looser
+    # signals - left later, they scattered buildings and changelogs across
+    # Items and the Glossary catch-all depending on which weak signal hit first.
+    cat_set = set(cats)
+
+    # -- Release notes: "Versions/512" and friends are patch notes ------
+    if slug.startswith("Versions/"):
+        return START, "Release notes", tags
+
+    # -- Equipment slots describe where gear goes, not the gear ---------
+    if slug.endswith("_Slot"):
+        return SYS, "Inventory & Gear", tags
+
+    # -- Buildings are places you visit ---------------------------------
+    if "Buildings" in cat_set or any(c.startswith("Building Type:") for c in cats):
+        return LOCS, "Buildings", tags
+
+    # -- Achievement pages. Matched exactly: an item whose category is
+    #    "Achievement reward Keyword Items" is an item, not an achievement.
+    if any(c == "Achievements" or c.endswith(" Achievements") for c in cats):
+        return SYS, "Progression", tags
+
+    # -- Faction standing and its reward tables -------------------------
+    if "Faction Reputation" in cat_set:
+        return SYS, "Rewards", tags
+
     # -- Glossary: keyword pages describe a term, not an item ----------
     if slug.endswith("_Keyword") or title.endswith("Keyword") \
             or slug in ("Keywords", "Glossary"):
@@ -493,12 +552,12 @@ def clean_tags(cats, extra):
 
 SECTION_ORDER = [START, SKILLS, ACTS, ITEMS, LOCS, SYS, GUIDES, GLOSS]
 SUB_ORDER = {
-    START: ["Getting started", "About the wiki"],
+    START: ["Getting started", "About the wiki", "Release notes"],
     SKILLS: ["Gathering", "Artisan", "Support"],
     ACTS: ["Gathering", "Crafting", "Movement", "Other"],
     ITEMS: ["Tools", "Gear", "Materials", "Consumables", "Food",
             "Collectibles", "Cosmetics", "Index"],
-    LOCS: ["Regions", "Cities", "Areas"],
+    LOCS: ["Regions", "Cities", "Areas", "Buildings"],
     SYS: ["Attributes", "Progression", "Inventory & Gear", "Rewards",
           "Core rules"],
     GUIDES: ["Walkthroughs"],

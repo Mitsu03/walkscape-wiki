@@ -26,7 +26,8 @@ Just open `index.html` in any browser.
 
 ```
 index.html        the companion app (open this) — generated, do not hand-edit
-build_data.py     crawl -> data/wiki_data.json (cleaning + classification)
+fetch_pages.py    wiki -> .firecrawl/*.md (MediaWiki API, no key, no service)
+build_data.py     pages -> data/wiki_data.json (cleaning + classification)
 build_images.py   image refs -> data/images.json (compressed data URIs)
                   + data/img_meta.json (which ids are pixel art / share bytes)
 build_site.py     data -> index.html (the entire UI lives here)
@@ -41,9 +42,13 @@ artifact and is overwritten on every build.
 ## Building
 
 ```bash
-# 1. crawl (only when refreshing content)
-firecrawl crawl "https://wiki.walkscape.app" --limit 200 --include-paths "/wiki/" \
-  --wait -o data/crawl.json          # unpacked into .firecrawl/*.md
+pip install -r requirements.txt
+
+# 1. fetch pages (only when refreshing content)
+python fetch_pages.py                # -> .firecrawl/*.md
+#   --refresh   re-fetch pages already cached, to pick up wiki edits
+#   --list      show the work list without fetching
+#   --limit N   stop after N pages
 
 # 2. clean, classify, index
 python build_data.py                 # -> data/wiki_data.json + data/img_map.json
@@ -55,12 +60,18 @@ python build_images.py               # -> data/images.json + data/img_meta.json
 python build_site.py                 # -> index.html
 ```
 
+Content comes from the wiki's own MediaWiki `action=parse` endpoint, which returns
+finished server-rendered HTML. There is no crawler service, no API key and no
+per-page cost, so a refresh is limited only by politeness to the wiki's host
+(`--pause`, default 0.5s). Link discovery (`build_urls.py`) reads the cached
+pages, so a second `fetch_pages.py` run picks up anything newly linked.
+
 `build_data.py` prints the resulting classification, e.g.
 
 ```
-  Start Here: 7  (Getting started 6, About the wiki 1)
-  Skills: 16  (Gathering 6, Artisan 7, Support 3)
-  Items & Equipment: 107  (Tools 13, Gear 9, Materials 15, ...)
+  Start Here: 38  (Getting started 6, About the wiki 1, Release notes 31)
+  Skills: 23  (Gathering 6, Artisan 7, Support 10)
+  Items & Equipment: 367  (Tools 96, Gear 101, Materials 67, ...)
 ```
 
 Use that output to sanity-check the buckets after a re-crawl.
@@ -68,14 +79,28 @@ Use that output to sanity-check the buckets after a re-crawl.
 It then reports what it *discarded*, grouped by reason:
 
 ```
-Cached files: 274 | built: 273 | dropped: 1
+Cached files: 687 | built: 686 | dropped: 1
   language variant: 1
 ```
 
 Anything dropped for a reason other than `language variant` is named individually
-and wants a look. A page that was crawled at a bad address arrives as a MediaWiki
+and wants a look. A page fetched at a bad address arrives as a MediaWiki
 "There is currently no text in this page" placeholder, and shows up here as
 `wiki placeholder` rather than disappearing quietly.
+
+## Keeping content fresh
+
+`.github/workflows/refresh-content.yml` re-fetches the wiki weekly, rebuilds
+everything and opens a pull request — it never pushes to `main`, because the
+generated diff is ~17 MB of unreviewable HTML and the PR body carries the actual
+review surface: a before/after metrics table and the list of added, removed and
+changed pages. It runs on `workflow_dispatch` too. Guard rails in
+`.github/scripts/check_build.py` fail the run rather than publish if the page
+count collapses, a section empties, or `index.html` shrinks unexpectedly.
+
+No repository secret is required. The one repo setting it needs is
+**Settings → Actions → General → "Allow GitHub Actions to create and approve
+pull requests"**.
 
 ## Information architecture
 
@@ -84,11 +109,11 @@ becomes a secondary tag. The rules live in `classify()` in `build_data.py`:
 
 | Section | Contains | Subtypes |
 | --- | --- | --- |
-| Start Here | Tutorial, FAQs, tips, troubleshooting, wiki meta | Getting started, About the wiki |
+| Start Here | Tutorial, FAQs, tips, troubleshooting, wiki meta, patch notes | Getting started, About the wiki, Release notes |
 | Skills | the trainable skills | Gathering, Artisan, Support |
 | Activities | things a character can be set to do | Gathering, Crafting, Movement, Other |
 | Items & Equipment | every item page, plus item index pages | Tools, Gear, Materials, Consumables, Food, Collectibles, Cosmetics, Index |
-| Locations | regions, cities, areas | Regions, Areas |
+| Locations | regions, cities, areas, buildings | Regions, Areas, Buildings |
 | Game Systems | attributes, progression, inventory, rules | Attributes, Progression, Inventory & Gear, Rewards, Core rules |
 | Guides | goal-oriented walkthroughs | Walkthroughs |
 | Glossary | item keywords and wiki terms | Reference, Item keywords |

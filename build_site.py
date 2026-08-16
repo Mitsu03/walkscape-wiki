@@ -1233,6 +1233,13 @@ function sortableRecipe(t, wrap){
 }
 function enhance(root){
   if (!root) return;
+  /* External links open in a new tab. Set here rather than baked into every
+     anchor: 59k copies of target/rel cost 1.8 MB of payload. rel is not
+     optional - target="_blank" without it hands the opened page window.opener. */
+  root.querySelectorAll('a[href^="http"]').forEach(function(a){
+    a.target = '_blank';
+    a.rel = 'noopener';
+  });
   root.querySelectorAll('img[data-i]').forEach(function(img){
     var uri = imgUri(img.dataset.i);
     if (!uri){
