@@ -28,6 +28,7 @@ Just open `index.html` in any browser.
 index.html        the companion app (open this) — generated, do not hand-edit
 build_data.py     crawl -> data/wiki_data.json (cleaning + classification)
 build_images.py   image refs -> data/images.json (compressed data URIs)
+                  + data/img_meta.json (which ids are pixel art / share bytes)
 build_site.py     data -> index.html (the entire UI lives here)
 build_urls.py     cached pages -> data/master_urls.txt (link discovery)
 data/             source content crawled from the official wiki
@@ -48,7 +49,7 @@ firecrawl crawl "https://wiki.walkscape.app" --limit 200 --include-paths "/wiki/
 python build_data.py                 # -> data/wiki_data.json + data/img_map.json
 
 # 3. fetch and compress the images referenced above (optional but recommended)
-python build_images.py               # -> data/images.json
+python build_images.py               # -> data/images.json + data/img_meta.json
 
 # 4. render the app
 python build_site.py                 # -> index.html

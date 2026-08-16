@@ -279,6 +279,12 @@ def encode_sprite(sprite):
 
 
 def to_datauri(iid, path, ext):
+    """Return (data-uri, kind) where kind is 'sprite', 'vector' or 'raster'.
+
+    The kind matters downstream: a 'sprite' is pixel art rasterised onto its
+    native grid, so it wants nearest-neighbour scaling in the UI. Smoothing it
+    back up to a 210px slot undoes the point of the exact rasterisation.
+    """
     try:
         if ext == "svg":
             txt = open(path, encoding="utf-8", errors="ignore").read()
@@ -286,13 +292,13 @@ def to_datauri(iid, path, ext):
             if sprite is not None:
                 raw = encode_sprite(sprite)
                 if raw is not None:
-                    return datauri_webp(raw)
+                    return datauri_webp(raw), "sprite"
                 # pathological sprite: fall through to the vector path
             txt = minify_svg(txt)
             if not txt or len(txt) > SVG_MAX_BYTES:
                 return None
             enc = urllib.parse.quote(txt, safe="~()*!.'")
-            return "data:image/svg+xml,%s" % enc
+            return "data:image/svg+xml,%s" % enc, "vector"
 
         # raster
         im = Image.open(path)
@@ -312,7 +318,7 @@ def to_datauri(iid, path, ext):
         raw = webp(im, quality=q)
         if len(raw) > RASTER_MAX_BYTES:
             return None
-        return datauri_webp(raw)
+        return datauri_webp(raw), "raster"
     except Exception:
         return None
 
@@ -342,15 +348,17 @@ def main():
             print("    %s  %s  (%s)" % (iid, IMG_MAP.get(iid, ""), err))
     print("Fetched %d. Encoding..." % len(got))
 
-    encoded, unencodable = {}, []
+    encoded, unencodable, kinds = {}, [], {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
         futs = {ex.submit(to_datauri, iid, path, ext): (iid, ext)
                 for iid, path, ext in got}
         for fut in concurrent.futures.as_completed(futs):
             iid, ext = futs[fut]
-            uri = fut.result()
-            if uri:
+            res = fut.result()
+            if res:
+                uri, kind = res
                 encoded[iid] = (uri, ext)
+                kinds[iid] = kind
             else:
                 unencodable.append(iid)
     if unencodable:
@@ -358,8 +366,18 @@ def main():
         for iid in unencodable[:20]:
             print("    %s  %s" % (iid, IMG_MAP.get(iid, "")))
 
+    # Deduplicate: distinct wiki URLs (so distinct ids) routinely resolve to
+    # byte-identical art. Store each value once and alias the rest onto it.
+    canon, alias = {}, {}
+    for iid in sorted(encoded):
+        uri = encoded[iid][0]
+        first = canon.setdefault(uri, iid)
+        if first != iid:
+            alias[iid] = first
+
     # budget: smallest first, so a squeeze drops the fewest images possible
-    order = sorted(encoded.items(), key=lambda kv: len(kv[1][0]))
+    uniq = {iid: encoded[iid] for iid in set(canon.values())}
+    order = sorted(uniq.items(), key=lambda kv: len(kv[1][0]))
     out, total, skipped = {}, 0, 0
     for iid, (uri, ext) in order:
         if total + len(uri) > TOTAL_BUDGET:
@@ -368,15 +386,29 @@ def main():
         out[iid] = uri
         total += len(uri)
 
+    # an alias whose target lost the budget fight would dangle - drop it too
+    alias = {k: v for k, v in alias.items() if v in out}
+
     # keep a stable, readable ordering in the file
     out = {k: out[k] for k in sorted(out)}
     with open("data/images.json", "w", encoding="utf-8") as f:
         json.dump(out, f)
 
-    dropped = [k for k, _ in items if k not in out]
-    print("Embedded %d images (%.2f MB payload); %d over budget, "
-          "%d failed to encode, %d failed to download."
-          % (len(out), total / 1024 / 1024, skipped,
+    # Sidecar the UI needs but that does not belong in the id->uri map:
+    # which ids are pixel art (so the UI can scale them without smoothing),
+    # and which ids share another id's bytes.
+    meta = {
+        "sprites": sorted(i for i in out if kinds.get(i) == "sprite"),
+        "alias": {k: alias[k] for k in sorted(alias)},
+    }
+    with open("data/img_meta.json", "w", encoding="utf-8") as f:
+        json.dump(meta, f)
+
+    # An aliased id resolves through `out` at runtime, so it is NOT dropped.
+    dropped = [k for k, _ in items if k not in out and k not in alias]
+    print("Embedded %d images (%.2f MB payload); %d deduplicated onto a twin; "
+          "%d over budget, %d failed to encode, %d failed to download."
+          % (len(out), total / 1024 / 1024, len(alias), skipped,
              len(unencodable), len(failed)))
     if dropped:
         print("WARNING: %d referenced images have no data URI and will render "

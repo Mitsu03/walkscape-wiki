@@ -18,6 +18,16 @@ try:
 except FileNotFoundError:
     data["images"] = {}
 
+# sidecar from build_images.py: "sprites" are pixel art (scale them without
+# smoothing), "alias" points ids at another id whose bytes they share.
+try:
+    with open("data/img_meta.json", encoding="utf-8") as f:
+        _meta = json.load(f)
+    data["sprites"] = _meta.get("sprites", [])
+    data["ialias"] = _meta.get("alias", {})
+except FileNotFoundError:
+    data["sprites"], data["ialias"] = [], {}
+
 SECTION_ORDER = ["Start Here", "Skills", "Activities", "Items & Equipment",
                  "Locations", "Game Systems", "Guides", "Glossary"]
 sections = data["sections"]
@@ -296,6 +306,12 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .ibx-fig{display:grid;place-items:center;padding:18px 16px;background:var(--panel-2);
   border-bottom:1px solid var(--line-2)}
 .ibx-fig img{max-height:130px;max-width:100%;width:auto;height:auto}
+/* Pixel-art sprites are stored at their exact 128px grid. Only the two slots
+   that scale them UP get nearest-neighbour; thumbnails and table icons scale
+   them down, where smoothing is what you want. Photos and maps never match
+   .px at all, so they keep normal filtering. */
+.body img.bl.px,
+.ibx-fig img.px{image-rendering:pixelated}
 .ibx dl{margin:0}
 .ibx-row{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);
   gap:6px 16px;align-items:baseline;padding:9px 14px;font-size:.88rem;
@@ -587,7 +603,28 @@ mark{background:color-mix(in srgb,var(--amber) 34%,transparent);color:inherit;
 "use strict";
 var DATA = JSON.parse(document.getElementById('data').textContent);
 var P = DATA.pages, SEC = DATA.sections, SUBS = DATA.subs || {},
-    ORDER = DATA.order, IMG = DATA.images || {};
+    ORDER = DATA.order, IMG = DATA.images || {},
+    IALIAS = DATA.ialias || {}, SPRITES = null;
+
+/* An id may share another id's bytes (identical art under two wiki URLs). */
+function imgUri(id){
+  if (!id) return null;
+  var u = IMG[id];
+  if (u) return u;
+  var a = IALIAS[id];
+  return a ? (IMG[a] || null) : null;
+}
+/* Pixel-art sprites are rasterised onto their native grid, so the browser must
+   not smooth them when a slot scales them up. Built lazily: the list is long
+   and most sessions never open an article. */
+function isSprite(id){
+  if (SPRITES === null){
+    SPRITES = Object.create(null);
+    var s = DATA.sprites || [];
+    for (var i = 0; i < s.length; i++) SPRITES[s[i]] = 1;
+  }
+  return !!SPRITES[id];
+}
 var main = document.getElementById('main'),
     nav = document.getElementById('nav'),
     live = document.getElementById('live');
@@ -628,7 +665,7 @@ function glyph(section, size){
 
 /* ---------- thumbnails ---------- */
 function thumb(slug){
-  var p = P[slug], uri = p && p.icon ? IMG[p.icon] : null;
+  var p = P[slug], uri = p && p.icon ? imgUri(p.icon) : null;
   if (uri) return '<span class="thumb"><img src="' + attr(uri) + '" alt=""></span>';
   return '<span class="thumb">' + glyph(p ? p.section : '', 11) + '</span>';
 }
@@ -1197,7 +1234,7 @@ function sortableRecipe(t, wrap){
 function enhance(root){
   if (!root) return;
   root.querySelectorAll('img[data-i]').forEach(function(img){
-    var uri = IMG[img.dataset.i];
+    var uri = imgUri(img.dataset.i);
     if (!uri){
       var ph = document.createElement('span');
       ph.className = 'imgmiss';
@@ -1206,6 +1243,7 @@ function enhance(root){
       return;
     }
     img.src = uri;
+    if (isSprite(img.dataset.i)) img.classList.add('px');
     var block = false;
     if (!img.closest('td,th')){
       var par = img.parentElement;
