@@ -4,6 +4,10 @@
 # Downloaded raw image cache (regenerable via build_images.py)
 data/img_cache/
 
+# Python
+__pycache__/
+*.pyc
+
 # OS
 Thumbs.db
 .DS_Store

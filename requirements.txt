@@ -1,0 +1,13 @@
+# Build-pipeline dependencies.
+#
+# Derived from what the build scripts actually import:
+#   build_data.py    -> markdown        (re, glob, os, json, html, urllib, hashlib are stdlib)
+#   build_images.py  -> Pillow          (json, os, re, io, base64, urllib, concurrent are stdlib)
+#   build_site.py    -> stdlib only
+#   build_urls.py    -> stdlib only
+#
+# Nothing else is needed. The Firecrawl CLI is an npm package, not a Python
+# dependency -- see .github/workflows/refresh-content.yml.
+
+Markdown>=3.5,<4
+Pillow>=10.0,<12

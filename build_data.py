@@ -116,10 +116,18 @@ def clean_markdown(text, title):
             skip = True
             continue
         if skip:
-            if s == "" or s.startswith("-") or s.startswith("*") \
-               or s.startswith("[") or s.startswith("!") or s == "More":
+            # An image ends the nav block: the wiki's nav sub-blocks are pure
+            # link lists, so the first line carrying an image is already page
+            # content. Without this, pages whose whole body IS images (e.g.
+            # Troubleshooting, which is two screenshots and no prose) got
+            # swallowed here and then dropped as empty stubs.
+            if "![" in s:
+                skip = False
+            elif s == "" or s.startswith("-") or s.startswith("*") \
+                    or s.startswith("[") or s.startswith("!") or s == "More":
                 continue
-            skip = False
+            else:
+                skip = False
         out.append(ln)
 
     md = "\n".join(out)
@@ -218,7 +226,10 @@ def rewrite_html(html_str, have_slugs):
             dec = urllib.parse.unquote(page)
             key = dec  # compare against slugs (decoded, underscores)
             if key in have_slugs:
-                return 'href="#/' + urllib.parse.quote(page) + '"'
+                # Encode the DECODED key, never `page` - `page` may already be
+                # percent-encoded, and re-quoting it turns "%27" into "%2527",
+                # which the router then decodes to "%27" and fails to find.
+                return 'href="#/' + urllib.parse.quote(dec) + '"'
             # namespaced/meta or missing -> external
             return ('href="https://wiki.walkscape.app/wiki/' + page +
                     '" target="_blank" rel="noopener"')
@@ -273,6 +284,17 @@ ATTRIBUTES = {
     "Inventory_Space", "Skill_Level", "Bonus_Experience",
     "No_Materials_Consumed", "Crafting_Outcome",
 }
+# "_(Mechanics)" with or without its closing bracket - older cache entries were
+# truncated at the "(" by the link scraper, current ones are well-formed.
+MECH_RE = re.compile(r"_\(Mechanics\)?$")
+# The three pages of an attribute/skill family share one subject: the bare
+# concept, its calculation page, and its item index.
+_FAM_RE = re.compile(r"(_\(Mechanics\)?|_Attribute_Items|_Items)$")
+
+
+def family_key(slug):
+    """Collapse 'X', 'X_(Mechanics)' and 'X_Attribute_Items' onto 'X'."""
+    return _FAM_RE.sub("", urllib.parse.unquote(slug))
 # Core rules and progression pages.
 SYS_PAGES = {
     "Attributes", "Character_Level", "Skill_Experience", "Skill_Level",
@@ -355,6 +377,11 @@ def _hit(needles, haystack):
 def classify(slug, title, cats):
     """Return (section, subtype, tags). One primary home per page; anything
     else it also belongs to becomes a secondary tag."""
+    # Slugs arrive percent-encoded (they come from cache filenames), but every
+    # curated set below is written in decoded form ("Guide:Money_Making",
+    # "Walkscape_Walkthrough:About"). Decode once here so those literals match -
+    # otherwise the ":" pages silently fall through to the generic buckets.
+    slug = urllib.parse.unquote(slug)
     lc = " | ".join(c.lower() for c in cats)
     sl = slug.lower()
     tags = []
@@ -388,7 +415,7 @@ def classify(slug, title, cats):
         # lists of gear, so they live with the gear but are marked as indexes.
         tags.append(base.replace("_", " "))
         return ITEMS, "Index", tags
-    if slug in ATTRIBUTES or slug.replace("_(Mechanics", "") in ATTRIBUTES:
+    if slug in ATTRIBUTES or MECH_RE.sub("", slug) in ATTRIBUTES:
         return SYS, "Attributes", tags
 
     # -- Skills --------------------------------------------------------
@@ -498,24 +525,47 @@ def main():
                       r"|no|uk|hu|ro|el|he|ar|th|id|vi|hr|sk|sl|et|lt|lv)$",
                       re.I)
     pages = {}
+    # Every drop is recorded by reason. A page vanishing between the cache and
+    # the build used to be invisible, which is how 16 wrongly-addressed pages
+    # sat broken in the cache unnoticed: the scraper truncated their URLs, the
+    # wiki served a "no text in this page" placeholder, and the malformed-slug
+    # rule below quietly swallowed the evidence.
+    dropped = {"language variant": [], "malformed slug": [],
+               "wiki placeholder": [], "empty after cleaning": []}
     for slug, text in raw.items():
         title = slug_to_title(slug)
         if slug != "Home":
             # drop non-English language variants (e.g. Materials.de)
             if LANG.search(slug):
+                dropped["language variant"].append(slug)
                 continue
-            # drop malformed slugs where the link parser dropped a ")"
+            # a slug that opens a bracket it never closes means the link
+            # scraper truncated the URL - the page was crawled at a bad address
             if "(" in title and ")" not in title:
+                dropped["malformed slug"].append(slug)
+                continue
+            # the page does not exist on the wiki; we cached its placeholder
+            if "There is currently no text in this page" in text:
+                dropped["wiki placeholder"].append(slug)
                 continue
         cats = extract_categories(text)
         body_md = clean_markdown(text, title)
         if len(body_md) < 15:
-            continue  # empty/redirect stub
+            dropped["empty after cleaning"].append(slug)
+            continue
+        # Page keys are the DECODED title. Cache filenames are inconsistently
+        # encoded ("Guide%3AMoney_Making" but "Work_Efficiency_(Mechanics)"),
+        # and the app's router decodes the hash before looking a page up - so
+        # an encoded key is simply unreachable by any link rewritten from the
+        # wiki. Normalise here, and re-encode when building the source URL.
+        key = urllib.parse.unquote(slug)
         if slug == "Home":
             source_url = ("https://wiki.walkscape.app/wiki/"
                           "WalkScape:_Grind_by_walking!")
         else:
-            source_url = "https://wiki.walkscape.app/wiki/" + slug
+            # ":" is safe in a wiki path and keeps the canonical form readable
+            source_url = ("https://wiki.walkscape.app/wiki/"
+                          + urllib.parse.quote(key, safe="/:"))
         md.reset()
         body_html = md.convert(body_md)
         body_html = rewrite_html(body_html, have)
@@ -537,7 +587,7 @@ def main():
         # plain text for search + excerpt
         plain = re.sub(r"<[^>]+>", " ", body_html)
         plain = html.unescape(re.sub(r"\s+", " ", plain)).strip()
-        pages[slug] = {
+        pages[key] = {
             "title": title,
             "section": section,
             "sub": sub,
@@ -547,6 +597,25 @@ def main():
             "icon": first_img.group(1) if first_img else "",
             "url": source_url,
         }
+
+    # --- icon inheritance within a page family --------------------------
+    # An entry's icon is the first image on the page, but the conceptual pages
+    # carry no artwork at all: "Work Efficiency", "Work Efficiency (Mechanics)"
+    # and "Work Efficiency Items" describe one attribute, and only the item
+    # index has a picture. Let the family share it so these entries stop
+    # rendering as bare text in the palette and grid views.
+    families = {}
+    for slug, p in pages.items():
+        families.setdefault(family_key(slug), []).append(p)
+    for members in families.values():
+        donors = [q for q in members if q["icon"]]
+        if not donors or len(donors) == len(members):
+            continue
+        # prefer the item index as donor: it is the page with real gear art
+        donors.sort(key=lambda q: (q["sub"] != "Index", q["title"]))
+        for q in members:
+            if not q["icon"]:
+                q["icon"] = donors[0]["icon"]
 
     # --- related entries: pages this page links to, that link back or share
     #     a section. Cheap, deterministic, no NLP.
@@ -591,6 +660,21 @@ def main():
                                            if pages[x]["sub"] == k))
                          for k in subs[s])
         print(f"  {s}: {len(sections[s])}  ({line})")
+
+    total_dropped = sum(len(v) for v in dropped.values())
+    print(f"\nCached files: {len(raw)} | built: {len(pages)} | "
+          f"dropped: {total_dropped}")
+    for reason, slugs in dropped.items():
+        if not slugs:
+            continue
+        # language variants are expected and numerous; the rest are not, so
+        # name them - a page dropped for any other reason wants a human look.
+        if reason == "language variant":
+            print(f"  {reason}: {len(slugs)}")
+        else:
+            print(f"  {reason}: {len(slugs)}  -> "
+                  + ", ".join(sorted(slugs)[:12])
+                  + (" ..." if len(slugs) > 12 else ""))
 
 
 if __name__ == "__main__":
