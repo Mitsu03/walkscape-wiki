@@ -154,11 +154,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "${BRANCH}"
+          # Every generated file, or the build goes internally inconsistent.
+          # img_meta.json was missing here: it carries the sprite list and the
+          # dedupe alias map keyed by image id, so leaving it behind while
+          # images.json is regenerated points aliases at ids that no longer
+          # exist -- silently blank images rather than a failed build.
           git add -- \
             index.html \
             data/wiki_data.json \
             data/img_map.json \
             data/images.json \
+            data/img_meta.json \
+            data/redirects.json \
             data/master_urls.txt \
             data/urls.txt \
             data/home.md
@@ -168,7 +175,7 @@ jobs:
             exit 0
           fi
           git commit -m "Refresh wiki content ($(date -u +%Y-%m-%d))" \
-                     -m "Regenerated from a fresh crawl of wiki.walkscape.app by the scheduled content refresh."
+                     -m "Regenerated from a fresh fetch of wiki.walkscape.app by the scheduled content refresh."
           # The branch is owned exclusively by this workflow and is rebuilt from
           # main on every run, so it is force-updated rather than merged into.
           git push --force origin "${BRANCH}"

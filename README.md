@@ -28,6 +28,7 @@ Just open `index.html` in any browser.
 ```
 index.html        the companion app (open this) — generated, do not hand-edit
 fetch_pages.py    wiki -> .firecrawl/*.md (MediaWiki API, no key, no service)
+                  + data/redirects.json (titles that resolve to another page)
 build_data.py     pages -> data/wiki_data.json (cleaning + classification)
 build_images.py   image refs -> data/images.json (compressed data URIs)
                   + data/img_meta.json (which ids are pixel art / share bytes)
@@ -84,10 +85,17 @@ Cached files: 686 | built: 685 | dropped: 1
   language variant: 1
 ```
 
-Anything dropped for a reason other than `language variant` is named individually
-and wants a look. A page fetched at a bad address arrives as a MediaWiki
-"There is currently no text in this page" placeholder, and shows up here as
-`wiki placeholder` rather than disappearing quietly.
+Anything dropped for a reason other than `language variant` or `redirect` is
+named individually and wants a look. A page fetched at a bad address arrives as
+a MediaWiki "There is currently no text in this page" placeholder, and shows up
+here as `wiki placeholder` rather than disappearing quietly.
+
+Redirects never become pages. The wiki keeps a redirect behind every renamed or
+merged title — `Forges` → `Smithing`, `Traveling (Mechanics)` →
+`Travelling (Mechanics)` — and the API serves the target's article for either
+name, so fetching both would file one article under two titles. `fetch_pages.py`
+records them in `data/redirects.json`; links pointing at a redirect are rewritten
+to the canonical page.
 
 ## Keeping content fresh
 
@@ -133,7 +141,9 @@ Notable calls:
   Classified on their own shape, because judging them by their loot scattered them across
   five sections — `Carpentry_Chests` was filed as **Food**.
 - Crafting venues (Forges, Kitchens, Sawmills, Workshops…) carry their skill's wiki category,
-  which used to file them as skills. They are places, so they sit with the other buildings.
+  which used to file them as skills. They are places, so the rule sends them to the buildings.
+  The wiki has since turned all of them into redirects to the skill itself, so none currently
+  appear; the rule stays as a guard in case they are split back out.
 - Only the pages in `SKILL_GROUPS` are skills. The wiki tags anything skill-adjacent with the
   `Skills` category, so there is deliberately **no** category-based fallback into Skills.
 - `Gear:` and `Guide:` pages keep a qualifier — "Agility (gear set)", "Agility (guide)" —

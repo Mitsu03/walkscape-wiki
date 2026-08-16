@@ -17,6 +17,7 @@ via GitHub Pages, straight off the default branch. There is no CI: **committing 
 
 ```
 python fetch_pages.py          -> .firecrawl/*.md          (gitignored scratch cache)
+                               +  data/redirects.json     (titles the wiki resolves elsewhere)
 python build_urls.py           -> data/master_urls.txt      (link discovery)
 python build_data.py           -> data/wiki_data.json + data/img_map.json
 python build_images.py         -> data/images.json + data/img_meta.json
@@ -71,6 +72,15 @@ that shipped. When a page key and a URL disagree, suspect this first.
 **Needle gotcha:** `_hit()` matches substrings, which silently match inside longer words —
 `"cape"` also hit walkscape, landscape and escape. Write `"^cape"` for a token-boundary match.
 
+**Redirect gotcha:** the API follows redirects, so asking for a redirect returns the *target's*
+article — successfully. Nothing errors, the page count only goes up, and the corpus quietly
+gains the same article under two titles (`Forges` held all of Smithing; `Gear` rendered a
+literal "(Redirected from Gear)" line). `fetch_pages.py` compares the resolved title against
+the requested one and records the mismatch in `data/redirects.json` instead of caching it;
+`build_data.py` skips those slugs and rewrites inbound links to the target. Both steps are
+needed — the CI job restores `.firecrawl/` from cache, so a duplicate fetched before the fix
+would otherwise keep building.
+
 **`fetch_pages.py` gotcha:** markdownify drops an `<img>` in an inline context and emits
 only its alt text. Nearly every wiki image is wrapped in an `<a>` file link — including the
 infobox portrait that becomes each page's icon — so `keep_inline_images_in` is load-bearing,
@@ -90,6 +100,7 @@ data/
   images.json       image data-URIs (~2.5 MB)
   img_meta.json     which ids are pixel art, and which share another's bytes
   img_map.json      image id -> source URL
+  redirects.json    redirect slug -> canonical slug (never built as pages)
   master_urls.txt   discovered fetch targets (~690)
   urls.txt          sitemap seed
   home.md           the home page, kept apart (its title contains ':')

@@ -20,6 +20,31 @@ def img_id(url):
 CACHE = ".firecrawl"
 PREFIX = "wiki.walkscape.app-wiki-"
 
+
+# --- redirects ---------------------------------------------------------
+# fetch_pages.py records every title the wiki resolved elsewhere. They must not
+# become pages of their own (that ships one article under two titles), but they
+# are still linked to all over the wiki, so their links have to land somewhere.
+def _load_redirects():
+    try:
+        with open("data/redirects.json", encoding="utf-8") as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    flat = {}
+    for src in raw:
+        # Follow chains: MediaWiki does not resolve a double redirect itself,
+        # so A -> B -> C arrives here as two separate hops.
+        seen, tgt = {src}, raw[src]
+        while tgt in raw and tgt not in seen:
+            seen.add(tgt)
+            tgt = raw[tgt]
+        if tgt != src:
+            flat[urllib.parse.unquote(src)] = urllib.parse.unquote(tgt)
+    return flat
+
+REDIRECTS = _load_redirects()
+
 # --- page slug helpers -------------------------------------------------
 def file_to_slug(path):
     name = os.path.basename(path)
@@ -252,6 +277,8 @@ def rewrite_html(html_str, have_slugs):
                     page = page[len(pre):]
                     break
             dec = urllib.parse.unquote(page)
+            # a link to a redirect belongs on the page it redirects to
+            dec = REDIRECTS.get(dec, dec)
             key = dec  # compare against slugs (decoded, underscores)
             if key in have_slugs:
                 # Encode the DECODED key, never `page` - `page` may already be
@@ -313,6 +340,12 @@ SKILL_PAGES = set().union(*SKILL_GROUPS.values())
 # Venues where a skill is practised ("Use blazing forges to smelt ores..."). The
 # wiki tags them with the skill's category, which used to file them as skills;
 # they are places, and belong with the other buildings.
+#
+# As of the 2026-08 refresh every one of these is a redirect to its skill (or
+# gone), so redirect handling drops them before this rule is reached and the
+# set matches nothing. It is kept because the wiki has split venues back out
+# before: if one returns as a real page, the category fallback would file it
+# under Skills again, which is the bug this rule exists to stop.
 FACILITY_PAGES = {
     "Forges", "Kitchens", "Sawmills", "Workshops", "Tanneries",
     "Erdwiss_Trinketry_Factory",
@@ -640,7 +673,7 @@ def main():
         raw["Home"] = open("data/home.md", encoding="utf-8",
                            errors="ignore").read()
 
-    have = set(urllib.parse.unquote(s) for s in raw.keys())
+    have = set(urllib.parse.unquote(s) for s in raw.keys()) - set(REDIRECTS)
 
     LANG = re.compile(r"[-./](de|fr|es|it|pt|pl|nl|ru|zh|ja|ko|tr|cs|fi|sv|da"
                       r"|no|uk|hu|ro|el|he|ar|th|id|vi|hr|sk|sl|et|lt|lv)$",
@@ -652,13 +685,21 @@ def main():
     # wiki served a "no text in this page" placeholder, and the malformed-slug
     # rule below quietly swallowed the evidence.
     dropped = {"language variant": [], "malformed slug": [],
-               "wiki placeholder": [], "empty after cleaning": []}
+               "wiki placeholder": [], "empty after cleaning": [],
+               "redirect": []}
     for slug, text in raw.items():
         title = slug_to_title(slug)
         if slug != "Home":
             # drop non-English language variants (e.g. Materials.de)
             if LANG.search(slug):
                 dropped["language variant"].append(slug)
+                continue
+            # The page is a redirect; its content belongs to the target and is
+            # built from the target's own cache entry. fetch_pages.py stops
+            # caching these, but a CI run restores .firecrawl from cache, so an
+            # older duplicate can still be sitting there.
+            if urllib.parse.unquote(slug) in REDIRECTS:
+                dropped["redirect"].append(slug)
                 continue
             # a slug that opens a bracket it never closes means the link
             # scraper truncated the URL - the page was crawled at a bad address
@@ -788,9 +829,10 @@ def main():
     for reason, slugs in dropped.items():
         if not slugs:
             continue
-        # language variants are expected and numerous; the rest are not, so
-        # name them - a page dropped for any other reason wants a human look.
-        if reason == "language variant":
+        # language variants and redirects are expected and numerous; the rest
+        # are not, so name them - a page dropped for any other reason wants a
+        # human look.
+        if reason in ("language variant", "redirect"):
             print(f"  {reason}: {len(slugs)}")
         else:
             print(f"  {reason}: {len(slugs)}  -> "

@@ -13,6 +13,12 @@ unchanged:
     ## Categories
     - [<cat>](https://wiki.walkscape.app/wiki/Category:<cat>)
 
+Redirects are resolved, never cached: the API reports the page it actually
+landed on, and a title that differs from the one asked for is recorded in
+data/redirects.json instead of being written out.  build_data.py points links
+at the target, so `Forges` sends you to `Smithing` rather than shipping a
+second copy of it.
+
 Usage:
     python fetch_pages.py                 # fetch everything missing from cache
     python fetch_pages.py --limit 20      # stop after 20 pages
@@ -20,6 +26,7 @@ Usage:
     python fetch_pages.py --list          # show what would be fetched, fetch nothing
 """
 import argparse
+import collections
 import json
 import os
 import re
@@ -57,6 +64,26 @@ DROP_SELECTORS = [
 
 PAUSE = 0.5      # seconds between requests - be a good citizen
 RETRIES = 3
+
+REDIRECTS_FILE = "data/redirects.json"
+
+_WS_RE = re.compile(r"\s+")
+
+
+def norm_title(s):
+    """Normalise a title far enough to tell a redirect from mere formatting.
+
+    MediaWiki treats "_" as a space, always capitalises the first letter and
+    collapses whitespace, so `Gear:Traveling` and `Gear:Travelling` differ but
+    `bird_nest` and `Bird nest` do not.  Without this the API's own
+    normalisation would look like a redirect on every lowercase slug.
+    """
+    s = _WS_RE.sub(" ", urllib.parse.unquote(s).replace("_", " ")).strip()
+    return s[:1].upper() + s[1:]
+
+
+def title_to_slug(title):
+    return _WS_RE.sub(" ", title).strip().replace(" ", "_")
 
 
 def slug_to_filename(slug):
@@ -112,7 +139,14 @@ def api_get(params):
 
 
 def fetch_page(slug):
-    """Return (markdown_document, None) or (None, error_string)."""
+    """Return (markdown_document, error_string, redirect_target).
+
+    Exactly one of the three is set.  `redirect_target` means the wiki resolved
+    the request to a different page: the content is real, but it belongs to
+    that page, not this one.  Caching it here would ship the same article twice
+    under two titles - which is how "Forges" came to contain the whole Smithing
+    page, and "Gear" rendered a literal "(Redirected from Gear)" line.
+    """
     data = api_get({
         "action": "parse",
         "page": slug,
@@ -122,9 +156,11 @@ def fetch_page(slug):
         "redirects": "1",
     })
     if "error" in data:
-        return None, data["error"].get("code", "api-error")
+        return None, data["error"].get("code", "api-error"), None
     parse = data["parse"]
     title = parse.get("title", slug.replace("_", " "))
+    if norm_title(title) != norm_title(slug):
+        return None, None, title_to_slug(title)
 
     soup = BeautifulSoup(parse["text"], "html.parser")
     for sel in DROP_SELECTORS:
@@ -147,7 +183,7 @@ def fetch_page(slug):
         for c in cats:
             out.append("- [%s](%s/wiki/Category:%s)"
                        % (c.replace("_", " "), BASE, c))
-    return "\n".join(out) + "\n", None
+    return "\n".join(out) + "\n", None, None
 
 
 def cached_slugs():
@@ -162,6 +198,31 @@ def wanted_slugs():
     urls = [l.strip() for l in open("data/master_urls.txt", encoding="utf-8")
             if l.strip()]
     return [urllib.parse.unquote(u.split("/wiki/", 1)[1]) for u in urls]
+
+
+def load_redirects():
+    try:
+        with open(REDIRECTS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_redirects(found, visited):
+    """Merge this run's findings into the committed map.
+
+    Only slugs we actually visited are updated, so a partial run (--limit, or
+    an incremental fetch) narrows the map instead of wiping it. A slug that was
+    a redirect and now resolves to itself is dropped: the wiki turned it into a
+    real page and it should come back as one.
+    """
+    redir = load_redirects()
+    for slug in visited:
+        redir.pop(slug, None)
+    redir.update(found)
+    with open(REDIRECTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(redir, f, indent=1, sort_keys=True, ensure_ascii=False)
+    return redir
 
 
 def main():
@@ -192,12 +253,35 @@ def main():
 
     ok = failed = 0
     errors = []
-    for i, slug in enumerate(todo, 1):
+    redirected = {}
+    visited = []
+    # A queue, not a list: resolving a redirect can reveal a target that is not
+    # in the manifest yet (Gem_Pouches -> Gem_pouch), and that target still has
+    # to be fetched or the redirect drops real content instead of a duplicate.
+    queue = collections.deque(todo)
+    queued = set(todo)
+    total = len(queue)
+    i = 0
+    while queue:
+        slug = queue.popleft()
+        i += 1
         try:
-            doc, err = fetch_page(slug)
+            doc, err, target = fetch_page(slug)
         except Exception as e:                       # noqa: BLE001
-            doc, err = None, "%s: %s" % (type(e).__name__, e)
-        if doc is None:
+            doc, err, target = None, "%s: %s" % (type(e).__name__, e), None
+        visited.append(slug)
+        if target:
+            redirected[slug] = target
+            # A stale cache file would otherwise keep serving the duplicate;
+            # the CI run restores .firecrawl from cache between runs.
+            stale = os.path.join(CACHE, slug_to_filename(slug))
+            if os.path.exists(stale):
+                os.remove(stale)
+            if target not in have and target not in queued:
+                queue.append(target)
+                queued.add(target)
+                total += 1
+        elif doc is None:
             failed += 1
             errors.append((slug, err))
         else:
@@ -205,11 +289,20 @@ def main():
                       "w", encoding="utf-8") as f:
                 f.write(doc)
             ok += 1
-        if i % 25 == 0 or i == len(todo):
-            print("  [%d/%d] ok %d, failed %d" % (i, len(todo), ok, failed))
+        if i % 25 == 0 or not queue:
+            print("  [%d/%d] ok %d, redirect %d, failed %d"
+                  % (i, total, ok, len(redirected), failed))
         time.sleep(args.pause)
 
-    print("done: %d fetched, %d failed" % (ok, failed))
+    save_redirects(redirected, visited)
+    print("done: %d fetched, %d redirects skipped, %d failed"
+          % (ok, len(redirected), failed))
+    if redirected:
+        print("redirects (not cached; links are rewritten to the target):")
+        for slug in sorted(redirected)[:25]:
+            print("   %-45s -> %s" % (slug, redirected[slug]))
+        if len(redirected) > 25:
+            print("   ...and %d more" % (len(redirected) - 25))
     if errors:
         print("failures:")
         for slug, err in errors[:25]:
