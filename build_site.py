@@ -330,6 +330,20 @@ h2:hover .anchor,h3:hover .anchor,.anchor:focus-visible{opacity:1}
 .ibx dd{margin:0;text-align:right;color:var(--ink)}
 .ibx dd img{height:1.35em;width:auto;vertical-align:-.22em;margin:0 1px}
 .ibx dd a{color:var(--accent)}
+/* Per-quality breakdown produced by groupInfoboxVariants(): one row per
+   tier, one column per field that actually differs between tiers (usually
+   just Value). border-top restores the division that the shared dl's own
+   last-row rule strips when this block follows it directly. */
+.ibx-tiers{border-top:1px solid var(--line-2);overflow-x:auto}
+.ibx-tiers table{width:100%;border-collapse:collapse;font-size:.86rem}
+.ibx-tiers th,.ibx-tiers td{padding:7px 10px;text-align:right;white-space:nowrap}
+.ibx-tiers th{color:var(--ink-3);font-weight:500;font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line-2)}
+.ibx-tiers th:first-child,.ibx-tiers td:first-child{text-align:left}
+.ibx-tiers td:first-child{color:var(--ink-2)}
+.ibx-tiers td{border-bottom:1px solid var(--line-2)}
+.ibx-tiers tr:last-child td{border-bottom:0}
+.ibx-tiers td img{height:1.1em;width:auto;vertical-align:-.18em;margin-right:4px}
 @media (min-width:760px){
   .body .ibx{float:right;width:290px;margin:4px 0 16px 26px}
   /* In a widened column the prose stays at --measure, so a plain float:right
@@ -1189,6 +1203,22 @@ function foldIconColumn(t){
   }
 }
 
+/* Some infobox cells pack two things across a bare <br> - a two-word label
+   ("Search<br>Keyword:") or a run of keyword links ("Hatchet<br>Woodcutting
+   tool") - which reads fine as two lines in the wide source table but has no
+   textual separator at all, so textContent/innerHTML collapse it to
+   "SearchKeyword" / "HatchetWoodcutting tool". Replace each <br> with an
+   explicit separator: ", " when it is dividing a list of links, else a plain
+   space. Never mutates the original cell. */
+function debr(el){
+  var e = el.cloneNode(true);
+  var brs = e.querySelectorAll('br');
+  if (!brs.length) return e;
+  var sep = e.querySelectorAll('a').length > 1 ? ', ' : ' ';
+  [].forEach.call(brs, function(br){ br.replaceWith(document.createTextNode(sep)); });
+  return e;
+}
+
 /* Turn a padded key/value wiki infobox into a clean titled card, or return
    null when the table is genuinely tabular data. */
 function infobox(t){
@@ -1211,11 +1241,12 @@ function infobox(t){
       return;
     }
     for (var i = 0; i < cells.length; i++){
-      if (/:\s*$/.test(cells[i].textContent.trim())){
+      var lblText = debr(cells[i]).textContent.trim();
+      if (/:\s*$/.test(lblText)){
         labels++;
         var val = cells[i + 1];
         if (val && !cellEmpty(val)){
-          pairs.push([cells[i].textContent.trim().replace(/:\s*$/, ''), val.innerHTML]);
+          pairs.push([lblText.replace(/:\s*$/, ''), debr(val).innerHTML]);
           i++;
         }
       }
@@ -1237,6 +1268,84 @@ function infobox(t){
   }).join('') + '</dl>';
   box.innerHTML = html;
   return box;
+}
+
+/* Many item pages give one infobox per quality tier (Normal/Good/.../Eternal),
+   so a page like Adamant_hatchet stacks six near-identical .ibx cards - nine
+   of ten fields repeat verbatim, only Value changes. Detect a run of
+   consecutive .ibx cards that are quality variants of one item and collapse
+   it into a single card: shared fields once, varying fields as a small
+   per-quality breakdown table. Runs entirely as a DOM post-pass over root's
+   direct children, once every table in enhance()'s main loop has already
+   become an .ibx or been left alone - infobox() only ever produces one card
+   per table, so there is no way to do this grouping any earlier. */
+function variantParts(card){
+  var hd = card.querySelector('.ibx-hd');
+  if (!hd) return null;
+  var m = hd.textContent.trim().match(/^(.*\S)\s*\(([^()]+)\)$/);
+  return m ? { base: m[1], tier: m[2].trim() } : null;
+}
+function fieldSig(card){
+  return [].map.call(card.querySelectorAll('dt'), function(dt){ return dt.textContent.trim(); }).join('|');
+}
+/* Replace a qualifying run (>= 2 cards, same base name, identical field
+   labels, verified by the caller) with one merged card. */
+function mergeVariantRun(run){
+  var base = variantParts(run[0]).base;
+  var rowsPerCard = run.map(function(c){
+    return [].map.call(c.querySelectorAll('.ibx-row'), function(r){
+      return { label: r.querySelector('dt').textContent.trim(), html: r.querySelector('dd').innerHTML };
+    });
+  });
+  var labels = rowsPerCard[0].map(function(r){ return r.label; });
+  var qIdx = labels.indexOf('Quality');   // shown as a per-tier badge instead of a column
+
+  var shared = [], varying = [];
+  labels.forEach(function(label, idx){
+    if (idx === qIdx) return;
+    var vals = rowsPerCard.map(function(rows){ return rows[idx] ? rows[idx].html : ''; });
+    var allSame = vals.every(function(v){ return v === vals[0]; });
+    (allSame ? shared : varying).push(idx);
+  });
+
+  var fig = run[0].querySelector('.ibx-fig');
+  var html = '<div class="ibx-hd">' + esc(base) + '</div>';
+  if (fig) html += fig.outerHTML;
+  html += '<dl>' + shared.map(function(idx){
+    return '<div class="ibx-row"><dt>' + esc(labels[idx]) + '</dt><dd>' +
+      rowsPerCard[0][idx].html + '</dd></div>';
+  }).join('') + '</dl>';
+
+  html += '<div class="ibx-tiers"><table><thead><tr><th scope="col">Quality</th>' +
+    varying.map(function(idx){ return '<th scope="col">' + esc(labels[idx]) + '</th>'; }).join('') +
+    '</tr></thead><tbody>' + run.map(function(card, ci){
+      var tier = variantParts(card).tier;
+      var badge = qIdx >= 0 && rowsPerCard[ci][qIdx] ? rowsPerCard[ci][qIdx].html : '';
+      return '<tr><td>' + badge + esc(tier) + '</td>' + varying.map(function(idx){
+        return '<td>' + (rowsPerCard[ci][idx] ? rowsPerCard[ci][idx].html : '') + '</td>';
+      }).join('') + '</tr>';
+    }).join('') + '</tbody></table></div>';
+
+  var box = document.createElement('div');
+  box.className = 'ibx';
+  box.innerHTML = html;
+  run[0].replaceWith(box);
+  for (var k = 1; k < run.length; k++) run[k].remove();
+}
+function groupInfoboxVariants(root){
+  var cards = [].filter.call(root.children, function(k){ return k.classList.contains('ibx'); });
+  var i = 0;
+  while (i < cards.length){
+    var parts = variantParts(cards[i]), sig = parts && fieldSig(cards[i]);
+    var run = [cards[i]], k = i + 1;
+    while (parts && k < cards.length && run[run.length - 1].nextElementSibling === cards[k]){
+      var p = variantParts(cards[k]);
+      if (!p || p.base !== parts.base || fieldSig(cards[k]) !== sig) break;
+      run.push(cards[k]); k++;
+    }
+    if (run.length > 1) mergeVariantRun(run);
+    i = k;
+  }
 }
 
 var navUid = 0;
@@ -1505,6 +1614,17 @@ function enhance(root){
     }
   });
 
+  // The wiki source uses <h1> for its own top-level section headings ("Uses",
+  // "Sources", ...), which collides with the page's real <h1> in .ahead (a
+  // second h1 confuses the document outline) and silently misses the anchor
+  // + TOC treatment below, which only looks at h2/h3. Demote every in-body h1
+  // to h2 so it gets both.
+  [].forEach.call(root.querySelectorAll('h1'), function(h1){
+    var h2 = document.createElement('h2');
+    h2.innerHTML = h1.innerHTML;
+    h1.replaceWith(h2);
+  });
+
   var used = {};
   root.querySelectorAll('h2, h3').forEach(function(hd){
     var base = slugify(hd.textContent), id = base, n = 2;
@@ -1624,6 +1744,11 @@ function enhance(root){
     addEventListener('resize', upd);
     setTimeout(upd, 30);
   });
+
+  // Quality-variant infoboxes only exist as separate cards once every table
+  // above has already been resolved to an .ibx (or left alone), so this has
+  // to be a second pass rather than something done inline in the loop.
+  groupInfoboxVariants(root);
 
   // give the article extra horizontal room when a table actually needs it.
   // The old test was "more than 6 columns and no infobox", which left plenty of
