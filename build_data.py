@@ -689,7 +689,13 @@ def main():
         raw["Home"] = open("data/home.md", encoding="utf-8",
                            errors="ignore").read()
 
-    have = set(urllib.parse.unquote(s) for s in raw.keys()) - set(REDIRECTS)
+    # NB: the set of link targets is NOT computed here. It used to be the cache
+    # listing minus redirects, which is not the same thing as the pages that get
+    # built: a slug dropped below (empty after cleaning, a placeholder, a
+    # malformed slug) stayed in it, so every link pointing at that slug was
+    # rewritten into an internal "#/" link to a page that does not exist.
+    # `Gear:Kayaking/Trinket_grind` shipped exactly that way. Links are resolved
+    # in a second pass instead, once `pages` is final.
 
     LANG = re.compile(r"[-./](de|fr|es|it|pt|pl|nl|ru|zh|ja|ko|tr|cs|fi|sv|da"
                       r"|no|uk|hu|ro|el|he|ar|th|id|vi|hr|sk|sl|et|lt|lv)$",
@@ -745,8 +751,26 @@ def main():
             source_url = ("https://wiki.walkscape.app/wiki/"
                           + urllib.parse.quote(key, safe="/:"))
         md.reset()
-        body_html = md.convert(body_md)
-        body_html = rewrite_html(body_html, have)
+        section, sub, extra = classify(slug, title, cats)
+        pages[key] = {
+            "title": title,
+            "section": section,
+            "sub": sub,
+            "tags": clean_tags(cats, extra),
+            "url": source_url,
+            # Links are still wiki URLs at this point; resolved below, once
+            # every surviving page is known.
+            "_html": md.convert(body_md),
+            "_slug": slug,
+        }
+
+    # --- resolve links, then finish each page ---------------------------
+    # `have` is the built set, so a link can only become internal when its
+    # target actually exists in this build.
+    have = set(pages)
+    for key, p in pages.items():
+        slug = p.pop("_slug")
+        body_html = rewrite_html(p.pop("_html"), have)
         # the home page's giant MediaWiki nav table renders cramped; drop it
         # (our own category cards replace it)
         if slug == "Home":
@@ -757,24 +781,15 @@ def main():
         # minify: collapse whitespace-only gaps between tags
         body_html = re.sub(r">\s+<", "><", body_html)
         if slug != "Home":
-            body_html = cap_html(body_html, source_url)
-
-        section, sub, extra = classify(slug, title, cats)
+            body_html = cap_html(body_html, p["url"])
         # first referenced image doubles as the entry's icon in lists/cards
         first_img = re.search(r'data-i="([^"]+)"', body_html)
         # plain text for search + excerpt
         plain = re.sub(r"<[^>]+>", " ", body_html)
         plain = html.unescape(re.sub(r"\s+", " ", plain)).strip()
-        pages[key] = {
-            "title": title,
-            "section": section,
-            "sub": sub,
-            "tags": clean_tags(cats, extra),
-            "html": body_html,
-            "text": plain[:280],
-            "icon": first_img.group(1) if first_img else "",
-            "url": source_url,
-        }
+        p["html"] = body_html
+        p["text"] = plain[:280]
+        p["icon"] = first_img.group(1) if first_img else ""
 
     # --- icon inheritance within a page family --------------------------
     # An entry's icon is the first image on the page, but the conceptual pages

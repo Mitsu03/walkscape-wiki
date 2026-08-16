@@ -77,6 +77,12 @@ that shipped. When a page key and a URL disagree, suspect this first.
 **Needle gotcha:** `_hit()` matches substrings, which silently match inside longer words —
 `"cape"` also hit walkscape, landscape and escape. Write `"^cape"` for a token-boundary match.
 
+**Dropped-page gotcha:** the set of link targets must be the pages that were *built*, never
+the cache listing. Anything `build_data.py` drops (empty after cleaning, placeholder,
+malformed slug, redirect) is still in the cache, so resolving links against the cache turns
+links to dropped pages into internal `#/` links to nothing. Links are therefore rewritten in
+a second pass, after `pages` is final — do not move that back inline.
+
 **Redirect gotcha:** the API follows redirects, so asking for a redirect returns the *target's*
 article — successfully. Nothing errors, the page count only goes up, and the corpus quietly
 gains the same article under two titles (`Forges` held all of Smithing; `Gear` rendered a
