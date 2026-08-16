@@ -148,7 +148,11 @@ it is the only progress feedback there is.
 
 Budgets and caps are tuned constants; treat them as deliberate:
 
-- `HTML_CAP = 46000` — per-page rendered HTML cap in `build_data.py`
+- `HTML_CAP = 400000` — per-page rendered HTML cap in `build_data.py`. A safety valve
+  against one runaway page, **not** a page-weight budget. It was 46000, which truncated 113
+  pages and cut 86% of `Equipment`; lifting it costs ~1.91 MB raw (~8.7% of `index.html`)
+  and un-truncates all of them. Raise it if pages start hitting it — do not lower it to
+  save bytes.
 - `RASTER_MAX = 128`, `WEBP_Q = 72`, `SVG_MAX_BYTES = 22000`, `RASTER_MAX_BYTES = 14000`,
   `TOTAL_BUDGET = 6_200_000` — image pipeline limits in `build_images.py`
 
@@ -193,8 +197,9 @@ There are no tests and no linter.
 
 Content is derived from the community wiki at `wiki.walkscape.app` and reorganized; game
 content remains © the WalkScape team and wiki contributors. This is an unofficial personal
-companion tool. Every page keeps a `url` field pointing back at its source, and articles that
-were truncated by `HTML_CAP` link out to the original — preserve that attribution path.
+companion tool. Every page keeps a `url` field pointing back at its source — preserve that
+attribution path. Any article still truncated by `HTML_CAP` also links out to the original
+inline; at the current cap nothing is.
 
 Be considerate when re-fetching: `fetch_pages.py` sleeps `--pause` seconds (default 0.5)
 between requests and identifies itself in the User-Agent. Fetching is free now, which makes

@@ -90,7 +90,15 @@ def extract_categories(text):
             cats.append(c)
     return cats
 
-HTML_CAP = 46000  # cap on RENDERED html (images are refs, so this is generous)
+# Cap on RENDERED html (images are refs, so this is generous). Sized to be a
+# safety valve against one runaway page, NOT a page-weight budget: at 46000 it
+# was truncating 113 pages and cutting 86% of "Equipment" (46 KB shipped of
+# 335 KB), which is the opposite of what this project is for. Measured across
+# every truncated page, lifting the cap entirely costs 1.91 MB raw - about 8.7%
+# of index.html - to un-truncate all 113. The largest page in the corpus renders
+# to 335 KB, so this leaves room for growth while still bounding the pathological
+# case. Raise it rather than lowering it if pages start hitting it again.
+HTML_CAP = 400000
 
 def cap_html(h, url):
     if len(h) <= HTML_CAP:
@@ -328,12 +336,20 @@ ABOUT_PAGES = {"Walkscape_Walkthrough:About",
                "Walkscape_Walkthrough:Privacy_policy", "Versions"}
 
 # The 14 trainable skills, split the way players think about them.
+# The complete list of trainable skills. Membership is the whole test - there is
+# deliberately no category-based fallback, since the wiki tags anything
+# skill-adjacent with the Skills category.
+#
+# "Forge" and "Traveling" used to be listed here and were dropped once redirect
+# handling made them unreachable: the wiki renamed Forge to Smithing (already
+# below) and retired Traveling, folding it into Agility. Both matched nothing,
+# so removing them changes no output.
 SKILL_GROUPS = {
     "Gathering": {"Fishing", "Foraging", "Hunting", "Mining", "Woodcutting",
                   "Farming"},
     "Artisan": {"Carpentry", "Cooking", "Crafting", "Smithing", "Tailoring",
-                "Trinketry", "Forge"},
-    "Support": {"Agility", "Traveling"},
+                "Trinketry"},
+    "Support": {"Agility"},
 }
 SKILL_PAGES = set().union(*SKILL_GROUPS.values())
 
