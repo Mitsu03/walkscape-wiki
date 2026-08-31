@@ -74,6 +74,8 @@ https://wiki.walkscape.app/wiki/Anglerfish_mask
 https://wiki.walkscape.app/wiki/Animal_fur
 https://wiki.walkscape.app/wiki/Animal_meat
 https://wiki.walkscape.app/wiki/Anita_Lyfe
+https://wiki.walkscape.app/wiki/Anita_Lyfe/nb
+https://wiki.walkscape.app/wiki/Anita_Lyfe/zh-hans
 https://wiki.walkscape.app/wiki/Another_Man%27s_Treasure
 https://wiki.walkscape.app/wiki/Antique_market_assessor
 https://wiki.walkscape.app/wiki/Apprentice_breeches
@@ -119,9 +121,13 @@ https://wiki.walkscape.app/wiki/Beef_stew
 https://wiki.walkscape.app/wiki/Beer
 https://wiki.walkscape.app/wiki/Bell_pepper
 https://wiki.walkscape.app/wiki/Bentley_Ward
+https://wiki.walkscape.app/wiki/Bentley_Ward/nb
+https://wiki.walkscape.app/wiki/Bentley_Ward/zh-hans
 https://wiki.walkscape.app/wiki/Berries
 https://wiki.walkscape.app/wiki/Bert%27s_super-skis
 https://wiki.walkscape.app/wiki/Bert_Lamberen
+https://wiki.walkscape.app/wiki/Bert_Lamberen/nb
+https://wiki.walkscape.app/wiki/Bert_Lamberen/zh-hans
 https://wiki.walkscape.app/wiki/Big_Game_Hunter
 https://wiki.walkscape.app/wiki/Big_basket
 https://wiki.walkscape.app/wiki/Bigloo
@@ -161,6 +167,8 @@ https://wiki.walkscape.app/wiki/Bonus_Experience_%28Mechanics%29
 https://wiki.walkscape.app/wiki/Bonus_Experience_Items
 https://wiki.walkscape.app/wiki/Boots_of_speed
 https://wiki.walkscape.app/wiki/Borus_Caskelair
+https://wiki.walkscape.app/wiki/Borus_Caskelair/nb
+https://wiki.walkscape.app/wiki/Borus_Caskelair/zh-hans
 https://wiki.walkscape.app/wiki/Boulder_boots
 https://wiki.walkscape.app/wiki/Box_trapping
 https://wiki.walkscape.app/wiki/Boxtrap
@@ -330,6 +338,7 @@ https://wiki.walkscape.app/wiki/Dinglehopper
 https://wiki.walkscape.app/wiki/Disenchanted_Forest
 https://wiki.walkscape.app/wiki/Diving_Gear
 https://wiki.walkscape.app/wiki/Diving_Gear_Set
+https://wiki.walkscape.app/wiki/Diving_gear_%28Keyword%29
 https://wiki.walkscape.app/wiki/Diving_gear_Keyword
 https://wiki.walkscape.app/wiki/Dolphin
 https://wiki.walkscape.app/wiki/Dolphin_egg
@@ -364,6 +373,8 @@ https://wiki.walkscape.app/wiki/Eel_trinket
 https://wiki.walkscape.app/wiki/Egg
 https://wiki.walkscape.app/wiki/Elara%27s_Lagoon
 https://wiki.walkscape.app/wiki/Elara_Frostledger
+https://wiki.walkscape.app/wiki/Elara_Frostledger/nb
+https://wiki.walkscape.app/wiki/Elara_Frostledger/zh-hans
 https://wiki.walkscape.app/wiki/Elderhide_chaps
 https://wiki.walkscape.app/wiki/Elderhide_hide
 https://wiki.walkscape.app/wiki/Elderhide_leather
@@ -382,6 +393,8 @@ https://wiki.walkscape.app/wiki/Erdwise_chip
 https://wiki.walkscape.app/wiki/Erdwise_dumpster_diving
 https://wiki.walkscape.app/wiki/Erdwiss_Trinketry_Factory
 https://wiki.walkscape.app/wiki/Ernie_Lamperen
+https://wiki.walkscape.app/wiki/Ernie_Lamperen/nb
+https://wiki.walkscape.app/wiki/Ernie_Lamperen/zh-hans
 https://wiki.walkscape.app/wiki/Eternal_Items
 https://wiki.walkscape.app/wiki/Ethereal_Items
 https://wiki.walkscape.app/wiki/Ethernite
@@ -458,10 +471,13 @@ https://wiki.walkscape.app/wiki/Flax
 https://wiki.walkscape.app/wiki/Flimsy_ruler
 https://wiki.walkscape.app/wiki/Flippers
 https://wiki.walkscape.app/wiki/Flippy_spatula
+https://wiki.walkscape.app/wiki/Floating_coral
 https://wiki.walkscape.app/wiki/Flooded_field_scavenging
 https://wiki.walkscape.app/wiki/Flooded_river_fishing_%28Rod%29
 https://wiki.walkscape.app/wiki/Flora%27s_silver_spoon
 https://wiki.walkscape.app/wiki/Flora_Floursifter
+https://wiki.walkscape.app/wiki/Flora_Floursifter/nb
+https://wiki.walkscape.app/wiki/Flora_Floursifter/zh-hans
 https://wiki.walkscape.app/wiki/Flowing_pocketwatch
 https://wiki.walkscape.app/wiki/Flowy_trousers
 https://wiki.walkscape.app/wiki/Foraging
@@ -487,6 +503,8 @@ https://wiki.walkscape.app/wiki/Fossil_mining
 https://wiki.walkscape.app/wiki/Fractured_compass
 https://wiki.walkscape.app/wiki/Fried_fish_sandwich
 https://wiki.walkscape.app/wiki/Frigid_the_Penguin
+https://wiki.walkscape.app/wiki/Frigid_the_Penguin/nb
+https://wiki.walkscape.app/wiki/Frigid_the_Penguin/zh-hans
 https://wiki.walkscape.app/wiki/Frost-Touched_Set
 https://wiki.walkscape.app/wiki/Frost-touched_boots
 https://wiki.walkscape.app/wiki/Frost-touched_gauntlets
@@ -515,9 +533,13 @@ https://wiki.walkscape.app/wiki/Gear%3AAntique_market_assessor/Collectible_set
 https://wiki.walkscape.app/wiki/Gear%3AAntique_market_assessor/Max_XP
 https://wiki.walkscape.app/wiki/Gear%3ABlue_ice_sickle
 https://wiki.walkscape.app/wiki/Gear%3ABlue_ice_sickle/Glacier_Foraging_Gear
+https://wiki.walkscape.app/wiki/Gear%3ACave_diving/Fala%27s_Late_Game_Gear
 https://wiki.walkscape.app/wiki/Gear%3ACrafting
 https://wiki.walkscape.app/wiki/Gear%3ACrafting/Best_Crafting_Outcome
 https://wiki.walkscape.app/wiki/Gear%3ACrafting/Underwater_Best_Crafting_Outcome
+https://wiki.walkscape.app/wiki/Gear%3ACut_birch_trees
+https://wiki.walkscape.app/wiki/Gear%3ACut_birch_trees/Token_Grinding
+https://wiki.walkscape.app/wiki/Gear%3ACut_birch_trees/Tokens%2C_Chests_and_Gems_farming
 https://wiki.walkscape.app/wiki/Gear%3ACut_willow_trees
 https://wiki.walkscape.app/wiki/Gear%3ACut_willow_trees/Best_In_Slot_For_Money_Per_Step
 https://wiki.walkscape.app/wiki/Gear%3ACut_willow_trees/Collectible_Find_Set
@@ -640,6 +662,7 @@ https://wiki.walkscape.app/wiki/Guide%3AAgility
 https://wiki.walkscape.app/wiki/Guide%3AAgility/Pure_Agility_Challenge
 https://wiki.walkscape.app/wiki/Guide%3AAll_The_Things_I_Could_Do
 https://wiki.walkscape.app/wiki/Guide%3AAn_Idiot_Sandwich
+https://wiki.walkscape.app/wiki/Guide%3AAnother_Man%27s_Treasure
 https://wiki.walkscape.app/wiki/Guide%3AArctic_Explorer
 https://wiki.walkscape.app/wiki/Guide%3ABarbarian_Village
 https://wiki.walkscape.app/wiki/Guide%3ABlue_ice_sickle
@@ -673,6 +696,7 @@ https://wiki.walkscape.app/wiki/Guide%3ANot_A_Periodical
 https://wiki.walkscape.app/wiki/Guide%3ANot_A_Periodical/Issue_1
 https://wiki.walkscape.app/wiki/Guide%3ANot_A_Periodical/Issue_2
 https://wiki.walkscape.app/wiki/Guide%3ANot_A_Periodical/Issue_3
+https://wiki.walkscape.app/wiki/Guide%3ANot_A_Periodical/Issue_4
 https://wiki.walkscape.app/wiki/Guide%3AOoh%2C_Shiny%21
 https://wiki.walkscape.app/wiki/Guide%3AOverprepared
 https://wiki.walkscape.app/wiki/Guide%3APride_And_Accomplishment
@@ -720,6 +744,8 @@ https://wiki.walkscape.app/wiki/Heavy_pick_handle
 https://wiki.walkscape.app/wiki/Helan_G%C3%A5r%21
 https://wiki.walkscape.app/wiki/Helpful_Herbert
 https://wiki.walkscape.app/wiki/Helpful_Herbert%27s_Hut
+https://wiki.walkscape.app/wiki/Helpful_Herbert/nb
+https://wiki.walkscape.app/wiki/Helpful_Herbert/zh-hans
 https://wiki.walkscape.app/wiki/Hemp
 https://wiki.walkscape.app/wiki/Herbert%27s_Guiding_Grounds_Faction_Rewards
 https://wiki.walkscape.app/wiki/Herbert%27s_Set
@@ -820,6 +846,8 @@ https://wiki.walkscape.app/wiki/Kallaheim%27s_Frosty_Finds
 https://wiki.walkscape.app/wiki/Kallaheim_job_board
 https://wiki.walkscape.app/wiki/Kalmar_The_Neverdrowning
 https://wiki.walkscape.app/wiki/Kalmar_the_Neverdrowning%2C_King_of_the_Deep_Sea
+https://wiki.walkscape.app/wiki/Kalmar_the_Neverdrowning%2C_King_of_the_Deep_Sea/nb
+https://wiki.walkscape.app/wiki/Kalmar_the_Neverdrowning%2C_King_of_the_Deep_Sea/zh-hans
 https://wiki.walkscape.app/wiki/Kayaking
 https://wiki.walkscape.app/wiki/Keen_eye_lenses
 https://wiki.walkscape.app/wiki/Kelp
@@ -912,6 +940,8 @@ https://wiki.walkscape.app/wiki/Meat_cleaver
 https://wiki.walkscape.app/wiki/Medieval_sneakers
 https://wiki.walkscape.app/wiki/Medium_Keyword
 https://wiki.walkscape.app/wiki/Melody_Young
+https://wiki.walkscape.app/wiki/Melody_Young/nb
+https://wiki.walkscape.app/wiki/Melody_Young/zh-hans
 https://wiki.walkscape.app/wiki/Meltdown_mask
 https://wiki.walkscape.app/wiki/Merfolk_Dance_Set
 https://wiki.walkscape.app/wiki/Merfolk_dance_bracers
@@ -953,6 +983,8 @@ https://wiki.walkscape.app/wiki/Modified_platform_shoes
 https://wiki.walkscape.app/wiki/Moondaisy
 https://wiki.walkscape.app/wiki/Moonshine
 https://wiki.walkscape.app/wiki/Morton_Ghains
+https://wiki.walkscape.app/wiki/Morton_Ghains/nb
+https://wiki.walkscape.app/wiki/Morton_Ghains/zh-hans
 https://wiki.walkscape.app/wiki/Mosquito_net_hat
 https://wiki.walkscape.app/wiki/Moss_chewie
 https://wiki.walkscape.app/wiki/Mountaineering_guidebook
@@ -962,9 +994,12 @@ https://wiki.walkscape.app/wiki/Mud_pie
 https://wiki.walkscape.app/wiki/Mummy
 https://wiki.walkscape.app/wiki/Mummy_egg
 https://wiki.walkscape.app/wiki/Mushroom
+https://wiki.walkscape.app/wiki/Mushroom_curry
 https://wiki.walkscape.app/wiki/My_Back_Hurts
 https://wiki.walkscape.app/wiki/Myriadian_Arc
 https://wiki.walkscape.app/wiki/Mysterious_Merchant
+https://wiki.walkscape.app/wiki/Mysterious_Merchant/nb
+https://wiki.walkscape.app/wiki/Mysterious_Merchant/zh-hans
 https://wiki.walkscape.app/wiki/Mysterious_chitin
 https://wiki.walkscape.app/wiki/Mysterious_northern_map
 https://wiki.walkscape.app/wiki/Navigate_Desert
@@ -998,6 +1033,8 @@ https://wiki.walkscape.app/wiki/Old_gold_ring
 https://wiki.walkscape.app/wiki/Old_silver_ring
 https://wiki.walkscape.app/wiki/Old_war_sword
 https://wiki.walkscape.app/wiki/Oldin_Skogsan
+https://wiki.walkscape.app/wiki/Oldin_Skogsan/nb
+https://wiki.walkscape.app/wiki/Oldin_Skogsan/zh-hans
 https://wiki.walkscape.app/wiki/Omni-tool
 https://wiki.walkscape.app/wiki/Ooh%2C_Shiny%21
 https://wiki.walkscape.app/wiki/Oven_mittens
@@ -1018,6 +1055,8 @@ https://wiki.walkscape.app/wiki/Pet_Rock
 https://wiki.walkscape.app/wiki/Pet_rock_egg
 https://wiki.walkscape.app/wiki/Petal_finder
 https://wiki.walkscape.app/wiki/Peter_Banksworth
+https://wiki.walkscape.app/wiki/Peter_Banksworth/nb
+https://wiki.walkscape.app/wiki/Peter_Banksworth/zh-hans
 https://wiki.walkscape.app/wiki/Petrified_branch
 https://wiki.walkscape.app/wiki/Petrified_desert_flower
 https://wiki.walkscape.app/wiki/Pets
@@ -1070,6 +1109,8 @@ https://wiki.walkscape.app/wiki/Quality_Outcome_%28Mechanics%29
 https://wiki.walkscape.app/wiki/Quality_Outcome_Items
 https://wiki.walkscape.app/wiki/Quickdraw_map
 https://wiki.walkscape.app/wiki/Quincie_Cartier
+https://wiki.walkscape.app/wiki/Quincie_Cartier/nb
+https://wiki.walkscape.app/wiki/Quincie_Cartier/zh-hans
 https://wiki.walkscape.app/wiki/Rabbit_ears
 https://wiki.walkscape.app/wiki/Rabbit_tracking
 https://wiki.walkscape.app/wiki/Rare_Find
@@ -1138,6 +1179,8 @@ https://wiki.walkscape.app/wiki/Royal_troubadour_pantaloons
 https://wiki.walkscape.app/wiki/Rules
 https://wiki.walkscape.app/wiki/Run_for_your_life
 https://wiki.walkscape.app/wiki/Runa_Norrberga
+https://wiki.walkscape.app/wiki/Runa_Norrberga/nb
+https://wiki.walkscape.app/wiki/Runa_Norrberga/zh-hans
 https://wiki.walkscape.app/wiki/Running_shirt
 https://wiki.walkscape.app/wiki/Running_shorts
 https://wiki.walkscape.app/wiki/Running_visor
@@ -1182,6 +1225,8 @@ https://wiki.walkscape.app/wiki/Secondary_Slot
 https://wiki.walkscape.app/wiki/Services
 https://wiki.walkscape.app/wiki/Seth%27s_swamp_compass
 https://wiki.walkscape.app/wiki/Seth_Kader
+https://wiki.walkscape.app/wiki/Seth_Kader/nb
+https://wiki.walkscape.app/wiki/Seth_Kader/zh-hans
 https://wiki.walkscape.app/wiki/Sewing_guidebook
 https://wiki.walkscape.app/wiki/Shadowquill_bracers
 https://wiki.walkscape.app/wiki/Shadowquill_plastron
@@ -1443,8 +1488,11 @@ https://wiki.walkscape.app/wiki/Upcycle_trash
 https://wiki.walkscape.app/wiki/Upgradeable_Keyword
 https://wiki.walkscape.app/wiki/Upgraded_Equipment
 https://wiki.walkscape.app/wiki/Valentina_Lucia
+https://wiki.walkscape.app/wiki/Valentina_Lucia/nb
+https://wiki.walkscape.app/wiki/Valentina_Lucia/zh-hans
 https://wiki.walkscape.app/wiki/Vastalume
 https://wiki.walkscape.app/wiki/Vastalume_job_board
+https://wiki.walkscape.app/wiki/Veggie_soup
 https://wiki.walkscape.app/wiki/Venture_into_the_bog
 https://wiki.walkscape.app/wiki/Versions
 https://wiki.walkscape.app/wiki/Versions/496
@@ -1482,6 +1530,8 @@ https://wiki.walkscape.app/wiki/Versions/676
 https://wiki.walkscape.app/wiki/Versions/679
 https://wiki.walkscape.app/wiki/Versions/683
 https://wiki.walkscape.app/wiki/Versions/684
+https://wiki.walkscape.app/wiki/Versions/688
+https://wiki.walkscape.app/wiki/Versions/690
 https://wiki.walkscape.app/wiki/Very_shiny_stone
 https://wiki.walkscape.app/wiki/Violite_bar
 https://wiki.walkscape.app/wiki/Violite_hatchet
@@ -1555,7 +1605,11 @@ https://wiki.walkscape.app/wiki/Wrentmark_Chests
 https://wiki.walkscape.app/wiki/Yew_logs
 https://wiki.walkscape.app/wiki/Yew_plank
 https://wiki.walkscape.app/wiki/Zeno_Rocca
+https://wiki.walkscape.app/wiki/Zeno_Rocca/nb
+https://wiki.walkscape.app/wiki/Zeno_Rocca/zh-hans
 https://wiki.walkscape.app/wiki/Zip_pouch
 https://wiki.walkscape.app/wiki/Zippy_kicksled
 https://wiki.walkscape.app/wiki/Zorre
 https://wiki.walkscape.app/wiki/Zorre%27s_desert_gourdpack
+https://wiki.walkscape.app/wiki/Zorre/nb
+https://wiki.walkscape.app/wiki/Zorre/zh-hans
