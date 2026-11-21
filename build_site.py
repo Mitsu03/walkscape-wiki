@@ -6,10 +6,44 @@ Everything the browser needs is inlined: markup, CSS, JS, the page payload
 and the compressed image data-URIs. No network, no fonts to fetch, no build
 step at runtime. Open index.html and it works.
 """
-import json, os
+import json, os, re, urllib.parse
+from wiki_redirects import available_redirects
 
 with open("data/wiki_data.json", encoding="utf-8") as f:
     data = json.load(f)
+
+# Pages deploys from committed data and runs only this script. Repair links in
+# already-generated payloads as well as links produced by future refreshes.
+redirects = available_redirects(data["pages"])
+data["redirects"] = redirects
+
+def rewrite_moved_links(html):
+    def replace(match):
+        href = match.group(1)
+        if href.startswith("#/"):
+            slug, sep, fragment = href[2:].partition("#")
+            target = redirects.get(urllib.parse.unquote(slug))
+        else:
+            url = urllib.parse.urlsplit(href)
+            if (url.scheme not in ("http", "https") or
+                    url.hostname != "wiki.walkscape.app" or
+                    not url.path.startswith("/wiki/") or url.query):
+                return match.group(0)
+            slug = url.path[6:]
+            for prefix in ("Special:MyLanguage/", "Special:MyLanguage:"):
+                if slug.startswith(prefix):
+                    slug = slug[len(prefix):]
+                    break
+            target = redirects.get(urllib.parse.unquote(slug))
+            sep, fragment = ("#", url.fragment) if url.fragment else ("", "")
+        if not target:
+            return match.group(0)
+        return 'href="#/' + urllib.parse.quote(target, safe="") + \
+               (sep + fragment if fragment else "") + '"'
+    return re.sub(r'href="([^"]+)"', replace, html)
+
+for page in data["pages"].values():
+    page["html"] = rewrite_moved_links(page["html"])
 
 # embed compressed image data-URIs, if the image pipeline has run
 try:
@@ -681,7 +715,7 @@ mark{background:color-mix(in srgb,var(--amber) 34%,transparent);color:inherit;
 var DATA = JSON.parse(document.getElementById('data').textContent);
 var P = DATA.pages, SEC = DATA.sections, SUBS = DATA.subs || {},
     ORDER = DATA.order, IMG = DATA.images || {},
-    IALIAS = DATA.ialias || {}, SPRITES = null;
+    IALIAS = DATA.ialias || {}, REDIRECTS = DATA.redirects || {}, SPRITES = null;
 
 /* An id may share another id's bytes (identical art under two wiki URLs). */
 function imgUri(id){
@@ -2073,6 +2107,9 @@ document.getElementById('themebtn').onclick = function(){
 /* ================= router ================= */
 function scrollToId(id){
   var el = id && document.getElementById(id);
+  // Old wiki fragments use underscores and title case; our heading ids use
+  // lowercase hyphens. Keep current companion section links working as-is.
+  if (!el && id) el = document.getElementById(slugify(decodeURIComponent(id).replace(/_/g, ' ')));
   if (!el) return;
   var y = el.getBoundingClientRect().top + (window.pageYOffset || 0) - 74;
   window.scrollTo({top:y, behavior:matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth'});
@@ -2086,6 +2123,11 @@ function route(){
   if (path.indexOf('c/') === 0){ shownSlug = null; renderCategory(decodeURIComponent(path.slice(2))); return; }
   if (path.indexOf('browse/') === 0){ location.replace('#/c/' + path.slice(7)); return; }
   var parts = path.split('#'), slug = decodeURIComponent(parts[0]);
+  if (REDIRECTS[slug]){
+    location.replace('#/' + encodeURIComponent(REDIRECTS[slug]) +
+                     (parts.length > 1 ? '#' + parts.slice(1).join('#') : ''));
+    return;
+  }
   if (slug === shownSlug){ if (parts[1]) scrollToId(parts[1]); return; }
   renderPage(slug);
   if (parts[1]) setTimeout(function(){ scrollToId(parts[1]); }, 20);
