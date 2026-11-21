@@ -9,6 +9,7 @@ Output: data/wiki_data.json
 """
 import re, glob, os, json, html, urllib.parse, hashlib
 import markdown
+from wiki_redirects import LEGACY_ALIASES, load_redirects
 
 # url -> short id, collected while cleaning pages
 IMG_MAP = {}
@@ -25,25 +26,7 @@ PREFIX = "wiki.walkscape.app-wiki-"
 # fetch_pages.py records every title the wiki resolved elsewhere. They must not
 # become pages of their own (that ships one article under two titles), but they
 # are still linked to all over the wiki, so their links have to land somewhere.
-def _load_redirects():
-    try:
-        with open("data/redirects.json", encoding="utf-8") as f:
-            raw = json.load(f)
-    except (OSError, ValueError):
-        return {}
-    flat = {}
-    for src in raw:
-        # Follow chains: MediaWiki does not resolve a double redirect itself,
-        # so A -> B -> C arrives here as two separate hops.
-        seen, tgt = {src}, raw[src]
-        while tgt in raw and tgt not in seen:
-            seen.add(tgt)
-            tgt = raw[tgt]
-        if tgt != src:
-            flat[urllib.parse.unquote(src)] = urllib.parse.unquote(tgt)
-    return flat
-
-REDIRECTS = _load_redirects()
+REDIRECTS = load_redirects()
 
 # --- page slug helpers -------------------------------------------------
 def file_to_slug(path):
@@ -286,13 +269,16 @@ def rewrite_html(html_str, have_slugs):
                     break
             dec = urllib.parse.unquote(page)
             # a link to a redirect belongs on the page it redirects to
-            dec = REDIRECTS.get(dec, dec)
+            if dec not in have_slugs:
+                dec = REDIRECTS.get(dec, LEGACY_ALIASES.get(dec, dec))
             key = dec  # compare against slugs (decoded, underscores)
             if key in have_slugs:
                 # Encode the DECODED key, never `page` - `page` may already be
                 # percent-encoded, and re-quoting it turns "%27" into "%2527",
                 # which the router then decodes to "%27" and fails to find.
-                return 'href="#/' + urllib.parse.quote(dec) + '"'
+                fragment = urllib.parse.urlsplit(href).fragment
+                return 'href="#/' + urllib.parse.quote(dec) + \
+                       ("#" + fragment if fragment else "") + '"'
             # namespaced/meta or missing -> external
             # target/rel are applied at render time instead of being repeated
             # here - 59k copies of them cost 1.8 MB.
